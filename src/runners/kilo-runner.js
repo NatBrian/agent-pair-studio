@@ -14,7 +14,9 @@ export class KiloRunner extends BaseRunner {
     if (this.model) {
       args.push('-m', this.model);
     }
-    if (sessionId) {
+    if (sessionId === true || sessionId === 'continue' || sessionId === '-c') {
+      args.push('-c');
+    } else if (sessionId && !sessionId.startsWith('kilo-sess-') && !sessionId.startsWith('new:')) {
       args.push('--session', sessionId);
     }
     return args;

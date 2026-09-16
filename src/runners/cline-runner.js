@@ -13,7 +13,7 @@ export class ClineRunner extends BaseRunner {
     if (this.model) {
       args.push('-m', this.model);
     }
-    if (sessionId) {
+    if (sessionId && !sessionId.startsWith('cline-sess-') && !sessionId.startsWith('new:')) {
       args.push('--id', sessionId);
     }
     return args;

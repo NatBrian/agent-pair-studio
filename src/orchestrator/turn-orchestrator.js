@@ -96,7 +96,10 @@ export class TurnOrchestrator extends EventEmitter {
     let prompt = overridePrompt;
     if (!prompt) {
       const lastTurn = this.session.history[this.session.history.length - 1];
-      prompt = `[${peer.toUpperCase()}]: ${lastTurn ? lastTurn.text : 'Over to you.'}`;
+      const peerMsg = (lastTurn && lastTurn.text && lastTurn.text.trim())
+        ? lastTurn.text.trim()
+        : `I have updated the workspace for "${this.session.topic}". Please inspect BLACKBOARD.md and proceed with your step.`;
+      prompt = `[${peer.toUpperCase()}]: ${peerMsg}`;
     }
 
     const humanNote = this.consumeHumanInput(agent);
@@ -111,12 +114,21 @@ export class TurnOrchestrator extends EventEmitter {
     this.runnerInstance = runner;
     this.emit('turn_start', { turn: this.currentTurn, agent, prompt });
 
+    const sessionArg = agent === 'kilo'
+      ? (this.currentTurn > 2 ? 'continue' : null)
+      : this.session.clineSessionId;
+
     let result;
     try {
       result = await runner.executeTurn(
         prompt,
-        agent === 'kilo' ? this.session.kiloSessionId : this.session.clineSessionId,
-        (ev) => this.emit('agent_event', { turn: this.currentTurn, agent, event: ev }),
+        sessionArg,
+        (ev) => {
+          if (agent === 'cline' && (ev.session_id || ev.sessionId || ev.id)) {
+            this.session.clineSessionId = ev.session_id || ev.sessionId || ev.id;
+          }
+          this.emit('agent_event', { turn: this.currentTurn, agent, event: ev });
+        },
         (chunk) => this.emit('terminal_output', { turn: this.currentTurn, agent, chunk })
       );
     } catch (err) {

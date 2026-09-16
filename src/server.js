@@ -41,18 +41,6 @@ export function createServerApp({ port = config.PORT, workspaceDir = config.WORK
   orchestrator.on('turn_error', (data) => broadcast('turn_error', data));
 
   // REST endpoints
-  app.get('/api/config', (req, res) => {
-    res.json({
-      port: config.PORT,
-      workspaceDir: config.WORKSPACE_DIR,
-      defaultModels: config.DEFAULT_MODELS,
-      availableFreeModels: {
-        cline: ['cline-free/deepseek-v4.1-flash', 'openrouter/meta-llama/llama-3.3-70b-instruct:free'],
-        kilo: ['openrouter/meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-2.0-flash-exp:free']
-      }
-    });
-  });
-
   app.get('/api/sessions', async (req, res) => {
     const list = await listSessions();
     res.json(list);
@@ -86,6 +74,15 @@ export function createServerApp({ port = config.PORT, workspaceDir = config.WORK
       return [];
     }
   }
+
+  app.get('/api/config', (req, res) => {
+    res.json({
+      port: config.PORT,
+      workspaceDir,
+      defaultModels: config.DEFAULT_MODELS,
+      availableFreeModels: config.AVAILABLE_FREE_MODELS
+    });
+  });
 
   app.get('/api/workspace/files', async (req, res) => {
     try {

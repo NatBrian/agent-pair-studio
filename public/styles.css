@@ -21,3 +21,7 @@
 .chat-card-human {
   border-left: 3px solid #f59e0b;
 }
+
+.hidden {
+  display: none !important;
+}
