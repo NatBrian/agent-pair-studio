@@ -18,6 +18,7 @@ export class BaseRunner {
       const child = spawn(command, args, {
         cwd: this.cwd,
         windowsHide: true,
+        shell: true,
         env: {
           ...process.env,
           CI: '1',

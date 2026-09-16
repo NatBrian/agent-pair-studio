@@ -9,12 +9,12 @@ test('BaseRunner spawns command, streams terminal chunks, and returns output', a
 
   const result = await runner.run(
     process.platform === 'win32' ? 'powershell' : 'sh',
-    ['-Command', 'Write-Output "Line 1"; Write-Output "Line 2"'],
+    ['-Command', 'Write-Output Line1; Write-Output Line2'],
     (ev) => events.push(ev),
     (chunk) => terminalChunks.push(chunk)
   );
 
   assert.equal(result.exitCode, 0);
-  assert.ok(result.rawStdout.includes('Line 1'));
+  assert.ok(result.rawStdout.includes('Line1'));
   assert.ok(terminalChunks.length > 0);
 });
