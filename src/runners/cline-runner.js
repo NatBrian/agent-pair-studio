@@ -2,7 +2,7 @@ import { BaseRunner } from './base-runner.js';
 import { config } from '../config.js';
 
 export class ClineRunner extends BaseRunner {
-  constructor({ cwd, model = config.DEFAULT_MODELS.cline, timeoutSeconds = 180 } = {}) {
+  constructor({ cwd, model = config.DEFAULT_MODELS.cline, timeoutSeconds = config.LOOP_LIMITS.TURN_TIMEOUT_SECONDS } = {}) {
     super({ cwd, timeoutSeconds });
     this.model = model;
     this.cliCmd = config.CLINE_CMD;

@@ -38,6 +38,9 @@ export function createServerApp({ port = config.PORT, workspaceDir = config.WORK
   });
   orchestrator.on('completed', (data) => broadcast('completed', data));
   orchestrator.on('paused_for_human', (data) => broadcast('paused_for_human', data));
+  orchestrator.on('paused', () => broadcast('paused', {}));
+  orchestrator.on('resumed', () => broadcast('resumed', {}));
+  orchestrator.on('stopped', () => broadcast('stopped', {}));
   orchestrator.on('turn_error', (data) => broadcast('turn_error', data));
 
   // REST endpoints

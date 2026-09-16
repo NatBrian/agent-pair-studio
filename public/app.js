@@ -15,6 +15,23 @@ function initTerminal() {
   terminal.writeln('\x1b[35m🐙 Agent Collab Studio Terminal Ready.\x1b[0m');
 }
 
+let isPaused = false;
+
+function updatePauseButton(paused) {
+  const btn = document.getElementById('btnPause');
+  if (!btn) return;
+  isPaused = paused;
+  if (paused) {
+    btn.textContent = '▶️ Resume';
+    btn.className = 'bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded font-medium transition';
+    btn.title = 'Resume autonomous turn-taking';
+  } else {
+    btn.textContent = '⏸️ Pause';
+    btn.className = 'bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-1.5 rounded font-medium transition';
+    btn.title = 'Pause turn progression gracefully between turns';
+  }
+}
+
 function connectWs() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${protocol}//${location.host}`);
@@ -22,6 +39,7 @@ function connectWs() {
   ws.onmessage = (event) => {
     const { type, payload } = JSON.parse(event.data);
     if (type === 'turn_start') {
+      updatePauseButton(false);
       updateActiveBadge(payload.agent, payload.turn);
     } else if (type === 'terminal_output') {
       if (terminal) terminal.write(payload.chunk);
@@ -29,10 +47,20 @@ function connectWs() {
       appendChatMessage(payload.agent, payload.text, payload.turn, payload.diff);
       refreshFileTree();
       loadSessionsList();
+    } else if (type === 'paused') {
+      updatePauseButton(true);
+      updateActiveBadge('PAUSED', 0);
+    } else if (type === 'resumed') {
+      updatePauseButton(false);
+    } else if (type === 'stopped') {
+      updatePauseButton(false);
+      updateActiveBadge('STOPPED', 0);
     } else if (type === 'completed') {
+      updatePauseButton(false);
       updateActiveBadge('COMPLETED', 0);
       alert('Goal achieved or conversation completed!');
     } else if (type === 'paused_for_human') {
+      updatePauseButton(true);
       updateActiveBadge('AWAITING HUMAN', 0);
       appendChatMessage('system', `⚠️ Agents requested your decision: "${payload.question}"`, 0);
     } else if (type === 'turn_error') {
@@ -52,6 +80,12 @@ function updateActiveBadge(agent, turn) {
   } else if (agent === 'COMPLETED') {
     badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-blue-900 text-blue-200 border border-blue-700';
     badge.textContent = 'COMPLETED';
+  } else if (agent === 'PAUSED') {
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-amber-900 text-amber-200 border border-amber-700';
+    badge.textContent = 'PAUSED';
+  } else if (agent === 'STOPPED') {
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-rose-900 text-rose-200 border border-rose-700';
+    badge.textContent = 'STOPPED';
   } else if (agent === 'AWAITING HUMAN') {
     badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-amber-900 text-amber-200 border border-amber-700 animate-pulse';
     badge.textContent = 'AWAITING INPUT';
@@ -301,8 +335,17 @@ document.getElementById('btnSendHuman').onclick = () => {
   input.value = '';
 };
 
-document.getElementById('btnPause').onclick = () => ws.send(JSON.stringify({ action: 'pause' }));
-document.getElementById('btnStop').onclick = () => ws.send(JSON.stringify({ action: 'stop' }));
+document.getElementById('btnPause').onclick = () => {
+  if (isPaused) {
+    ws.send(JSON.stringify({ action: 'resume' }));
+  } else {
+    ws.send(JSON.stringify({ action: 'pause' }));
+  }
+};
+
+document.getElementById('btnStop').onclick = () => {
+  ws.send(JSON.stringify({ action: 'stop' }));
+};
 
 window.onload = () => {
   initTerminal();

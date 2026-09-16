@@ -2,7 +2,7 @@ import { BaseRunner } from './base-runner.js';
 import { config } from '../config.js';
 
 export class KiloRunner extends BaseRunner {
-  constructor({ cwd, model = config.DEFAULT_MODELS.kilo, timeoutSeconds = 180 } = {}) {
+  constructor({ cwd, model = config.DEFAULT_MODELS.kilo, timeoutSeconds = config.LOOP_LIMITS.TURN_TIMEOUT_SECONDS } = {}) {
     super({ cwd, timeoutSeconds });
     this.model = model;
     this.cliCmd = config.KILO_CMD;

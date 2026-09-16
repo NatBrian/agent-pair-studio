@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { terminateProcessTree } from '../utils/process-supervisor.js';
 import { redactSecrets } from '../utils/security.js';
 
@@ -8,6 +10,56 @@ export function escapeCmdArg(arg) {
     return `"${arg.replace(/"/g, '""')}"`;
   }
   return arg;
+}
+
+export function resolveCliCommand(command, args = []) {
+  const isWindows = process.platform === 'win32';
+  const appData = process.env.APPDATA || '';
+
+  if (command === 'kilo') {
+    if (process.env.KILO_BIN_PATH && existsSync(process.env.KILO_BIN_PATH)) {
+      return { executable: process.env.KILO_BIN_PATH, args, shell: false };
+    }
+    if (isWindows) {
+      const exe = join(appData, 'npm', 'node_modules', '@kilocode', 'cli', 'node_modules', '@kilocode', 'cli-windows-x64', 'bin', 'kilo.exe');
+      if (existsSync(exe)) {
+        return { executable: exe, args, shell: false };
+      }
+      const js = join(appData, 'npm', 'node_modules', '@kilocode', 'cli', 'bin', 'kilo');
+      if (existsSync(js)) {
+        return { executable: process.execPath, args: [js, ...args], shell: false };
+      }
+    }
+  }
+
+  if (command === 'cline') {
+    if (process.env.CLINE_BIN_PATH && existsSync(process.env.CLINE_BIN_PATH)) {
+      return { executable: process.env.CLINE_BIN_PATH, args, shell: false };
+    }
+    if (isWindows) {
+      const exe = join(appData, 'npm', 'node_modules', 'cline', 'node_modules', '@cline', 'cli-windows-x64', 'bin', 'cline.exe');
+      if (existsSync(exe)) {
+        return { executable: exe, args, shell: false };
+      }
+      const js = join(appData, 'npm', 'node_modules', 'cline', 'bin', 'cline');
+      if (existsSync(js)) {
+        return { executable: process.execPath, args: [js, ...args], shell: false };
+      }
+    }
+  }
+
+  if (existsSync(command)) {
+    if (command.endsWith('.js') || command.endsWith('.cjs') || command.endsWith('.mjs')) {
+      return { executable: process.execPath, args: [command, ...args], shell: false };
+    }
+    return { executable: command, args, shell: false };
+  }
+
+  return {
+    executable: command,
+    args,
+    shell: isWindows && !command.endsWith('.exe')
+  };
 }
 
 export class BaseRunner {
@@ -23,11 +75,12 @@ export class BaseRunner {
       let rawStderr = '';
       let timedOut = false;
 
-      const safeArgs = args.map(escapeCmdArg);
-      const child = spawn(command, safeArgs, {
+      const { executable, args: finalArgs, shell } = resolveCliCommand(command, args);
+      const spawnArgs = (shell && process.platform === 'win32') ? finalArgs.map(escapeCmdArg) : finalArgs;
+      const child = spawn(executable, spawnArgs, {
         cwd: this.cwd,
         windowsHide: true,
-        shell: true,
+        shell,
         env: {
           ...process.env,
           CI: '1',
@@ -132,8 +185,6 @@ export class BaseRunner {
     if (textParts.length > 0) return textParts.join('\n\n');
     const cleanOut = stdout.trim();
     if (cleanOut) return cleanOut;
-    const cleanErr = stderr.trim();
-    if (cleanErr) return cleanErr;
     return '';
   }
 }

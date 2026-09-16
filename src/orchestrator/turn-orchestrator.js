@@ -20,9 +20,20 @@ export class TurnOrchestrator extends EventEmitter {
 
   parseHandoff(text = '') {
     if (/<TASK_COMPLETE>/i.test(text)) return 'TASK_COMPLETE';
-    const match = text.match(/<NEED_HUMAN\s+question=["']([^"']+)["']\s*\/?>/i);
-    if (match) {
-      return { type: 'NEED_HUMAN', question: match[1] };
+    // 1. <NEED_HUMAN question="..." />
+    const attrMatch = text.match(/<NEED_HUMAN\s+question=["']([^"']+)["']\s*\/?>/i);
+    if (attrMatch) {
+      return { type: 'NEED_HUMAN', question: attrMatch[1].trim() };
+    }
+    // 2. <NEED_HUMAN>...</NEED_HUMAN>
+    const tagMatch = text.match(/<NEED_HUMAN>([\s\S]*?)<\/NEED_HUMAN>/i);
+    if (tagMatch) {
+      return { type: 'NEED_HUMAN', question: tagMatch[1].trim() };
+    }
+    // 3. <NEED_HUMAN: ...>
+    const colonMatch = text.match(/<NEED_HUMAN:\s*([^>]+)>/i);
+    if (colonMatch) {
+      return { type: 'NEED_HUMAN', question: colonMatch[1].trim() };
     }
     return 'HANDOFF';
   }
@@ -99,9 +110,7 @@ export class TurnOrchestrator extends EventEmitter {
       let peerMsg = (lastTurn && lastTurn.text && lastTurn.text.trim())
         ? lastTurn.text.trim()
         : `I have updated the workspace for "${this.session.topic}". Please inspect BLACKBOARD.md and proceed with your step.`;
-      if (peerMsg.length > 1500) {
-        peerMsg = peerMsg.slice(0, 1500) + '... (see BLACKBOARD.md for details)';
-      }
+      // Coding CLIs handle full context natively; do not apply artificial prompt length limits
       prompt = `[${peer.toUpperCase()}]: ${peerMsg}`;
     }
 
@@ -111,14 +120,15 @@ export class TurnOrchestrator extends EventEmitter {
     }
 
     const runner = agent === 'kilo'
-      ? new KiloRunner({ cwd: this.workspaceDir, model: this.session.kiloModel })
-      : new ClineRunner({ cwd: this.workspaceDir, model: this.session.clineModel });
+      ? new KiloRunner({ cwd: this.workspaceDir, model: this.session.kiloModel, timeoutSeconds: config.LOOP_LIMITS.TURN_TIMEOUT_SECONDS })
+      : new ClineRunner({ cwd: this.workspaceDir, model: this.session.clineModel, timeoutSeconds: config.LOOP_LIMITS.TURN_TIMEOUT_SECONDS });
 
     this.runnerInstance = runner;
     this.emit('turn_start', { turn: this.currentTurn, agent, prompt });
 
+    const hasKiloRun = this.session.history.some((h) => h.agent === 'kilo');
     const sessionArg = agent === 'kilo'
-      ? (this.currentTurn > 2 ? 'continue' : null)
+      ? (hasKiloRun ? 'continue' : null)
       : this.session.clineSessionId;
 
     let result;
@@ -140,8 +150,8 @@ export class TurnOrchestrator extends EventEmitter {
       return;
     }
 
-    if (result.exitCode !== 0 && !result.text) {
-      const errMsg = (result.rawStderr || '').trim() || `Process exited with code ${result.exitCode}`;
+    if (result.exitCode !== 0) {
+      const errMsg = (result.rawStderr || result.text || '').trim() || `Process exited with code ${result.exitCode}`;
       const classification = classifyError(result.exitCode, errMsg);
       this.emit('turn_error', { turn: this.currentTurn, agent, error: errMsg, classification });
       return;
@@ -198,6 +208,7 @@ export class TurnOrchestrator extends EventEmitter {
   resume() {
     if (this.state === 'PAUSED') {
       this.state = 'RUNNING';
+      this.emit('resumed');
       this.executeTurnStep();
     }
   }
