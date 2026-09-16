@@ -76,7 +76,7 @@ export class TurnOrchestrator extends EventEmitter {
     return parts.length > 0 ? parts.join('\n') : null;
   }
 
-  async startSession({ topic, isIdeation = false, kiloModel, clineModel }) {
+  async startSession({ topic, isIdeation = false, kiloModel, clineModel, startingAgent = 'kilo' } = {}) {
     await initWorkspace(this.workspaceDir);
     const sessionId = `sess-${Date.now()}`;
     const slug = isIdeation ? 'agent-ideation' : (topic || 'session').slice(0, 20);
@@ -93,8 +93,11 @@ export class TurnOrchestrator extends EventEmitter {
       history: []
     };
 
+    const first = (startingAgent && startingAgent.toLowerCase() === 'cline') ? 'cline' : 'kilo';
+    const colleague = first === 'kilo' ? 'Cline' : 'Kilo';
+
     this.currentTurn = 0;
-    this.activeAgent = 'kilo';
+    this.activeAgent = first;
     this.state = 'RUNNING';
 
     // Protocol instructions so agents know how to hand off and conclude
@@ -107,9 +110,9 @@ export class TurnOrchestrator extends EventEmitter {
     // Kickoff prompt
     let kickoff;
     if (isIdeation) {
-      kickoff = `[Human Overseer]: You and your colleague Cline are an equal pair-programming team. Invent a creative coding tool or challenge, outline your plan in BLACKBOARD.md, implement the initial scaffold, and pass to Cline.\n\n${protocolText}`;
+      kickoff = `[Human Overseer]: You and your colleague ${colleague} are an equal pair-programming team. Invent a creative coding tool or challenge, outline your plan in BLACKBOARD.md, implement the initial scaffold, and pass to ${colleague}.\n\n${protocolText}`;
     } else {
-      kickoff = `[Human Overseer]: You and your colleague Cline are an equal pair-programming team. Task: "${this.session.topic}". Review the workspace, coordinate in BLACKBOARD.md, implement the first step, and pass to Cline.\n\n${protocolText}`;
+      kickoff = `[Human Overseer]: You and your colleague ${colleague} are an equal pair-programming team. Task: "${this.session.topic}". Review the workspace, coordinate in BLACKBOARD.md, implement the first step, and pass to ${colleague}.\n\n${protocolText}`;
     }
 
     return this.executeTurnStep(kickoff);

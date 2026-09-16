@@ -312,8 +312,9 @@ document.getElementById('btnConfirmStart').onclick = () => {
   const topic = document.getElementById('modalTopicInput').value.trim();
   const kiloModel = document.getElementById('modalKiloModel').value;
   const clineModel = document.getElementById('modalClineModel').value;
+  const startingAgent = document.getElementById('modalStartingAgent').value;
 
-  ws.send(JSON.stringify({ action: 'start_session', payload: { topic, kiloModel, clineModel } }));
+  ws.send(JSON.stringify({ action: 'start_session', payload: { topic, kiloModel, clineModel, startingAgent } }));
   document.getElementById('modalNewSession').classList.add('hidden');
   document.getElementById('lblSessionTitle').textContent = topic || 'Autonomous Task';
   document.getElementById('chatMessages').innerHTML = '';
@@ -322,8 +323,9 @@ document.getElementById('btnConfirmStart').onclick = () => {
 document.getElementById('btnSurpriseMe').onclick = () => {
   const kiloModel = document.getElementById('modalKiloModel').value;
   const clineModel = document.getElementById('modalClineModel').value;
+  const startingAgent = document.getElementById('modalStartingAgent').value;
 
-  ws.send(JSON.stringify({ action: 'start_session', payload: { isIdeation: true, kiloModel, clineModel } }));
+  ws.send(JSON.stringify({ action: 'start_session', payload: { isIdeation: true, kiloModel, clineModel, startingAgent } }));
   document.getElementById('modalNewSession').classList.add('hidden');
   document.getElementById('lblSessionTitle').textContent = '✨ Agent-Initiated Ideation';
   document.getElementById('chatMessages').innerHTML = '';
