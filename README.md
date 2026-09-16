@@ -16,4 +16,6 @@ Both agents run in **`yolo` / `dangerously-skip-permissions` mode**, strictly co
 
 ## Documentation Index
 
-- [Discussion and Planning Draft](file:///C:/Users/Admin/Documents/Github/agent-collab-studio/docs/discussion-and-planning.md) - Detailed breakdown of agent memory, collaboration mechanics, ACP vs NDJSON protocols, workspace sandboxing, and dashboard specifications.
+- [Discussion, Research & Questions Catalog](file:///C:/Users/Admin/Documents/Github/agent-collab-studio/docs/discussion-and-planning.md) - Deep dive into agent memory, collaboration dynamics, ACP vs. NDJSON protocols, free model handling, containment, and upcoming discussion topics.
+- [Implementation Plan Draft](file:///C:/Users/Admin/Documents/Github/agent-collab-studio/docs/implementation-plan-draft.md) - Phased technical blueprint covering project scaffolding, CLI subprocess runners, turn orchestrator, Git checkpoints, multi-tab web studio, and testing.
+

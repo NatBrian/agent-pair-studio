@@ -113,9 +113,64 @@ Both CLIs were investigated on the host system:
 
 ---
 
-## 6. Open Topics for Further Discussion
+## 6. Further Discussion Topics & Questions
 
-1. **Dashboard Stack**: Pure single-page HTML/Tailwind/Vanilla JS served by Node/Express (zero install/build step) vs React/Vite?
-2. **Human Intervention**: Should the human be able to "whisper" to only one agent, or broadcast to both?
-3. **Turn Collision Guard**: Strictly turn-by-turn (sequential) vs potential parallel subagent exploration?
-4. **Workspace Reset**: Should the dashboard offer a "Clean Workspace" / "Fresh Git Branch" button per session?
+This section catalogs detailed discussion questions for our upcoming alignment sessions.
+
+---
+
+### Topic A: Human Steering & Intervention Mechanics
+* **Context**: When watching the live conversation, the human user may notice the agents heading in the wrong direction or may want to give guidance.
+* **Questions**:
+  1. **Broadcast vs. Whisper**:
+     * *Option 1 (Broadcast)*: User inputs a message into the chat, and it is injected into the conversation thread as `[User / Human Overseer]: ...`, visible to both agents.
+     * *Option 2 (Whisper / Private Directive)*: User can choose to either broadcast OR privately direct a specific agent (e.g. sending a hidden hint to Cline: *"Ask Kilo to add benchmark numbers before merging"*).
+  2. **Interruption Mode**:
+     * Should typing a message queue it for the *next* turn, or immediately send an abort signal to cancel the current running turn and inject the user instruction right away?
+
+---
+
+### Topic B: Workspace Lifecycle & Multi-Session Isolation
+* **Context**: The user creates multiple conversation sessions over time.
+* **Questions**:
+  1. **Session-to-Workspace Mapping**:
+     * *Option 1 (Shared Cumulative Workspace)*: All sessions operate in `workspace/`. New sessions see what previous sessions built.
+     * *Option 2 (Git Branch Isolation)*: Every new session creates and checks out a new git branch (`session/<session-id>`) from `master`. Users can merge or review branches independently.
+     * *Option 3 (Dedicated Workspace Per Session)*: Every session creates its own folder (`workspace/sessions/<session-id>/`).
+  2. **Reset & Clean Controls**:
+     * Should the dashboard include a "Factory Reset Workspace" button (wipes untracked files and resets to initial commit)?
+
+---
+
+### Topic C: Handling Free Model Rate Limits & Network Glitches
+* **Context**: Free models (DeepSeek, OpenRouter free tiers, Gemini free tiers) have rate limits (e.g., requests per minute) and occasional timeouts.
+* **Questions**:
+  1. **Retry Strategy**:
+     * Automatic retry with exponential backoff (e.g., 3 attempts, 10s -> 20s -> 30s) before alerting the user?
+  2. **Fallback Model**:
+     * If a free model hits quota exhaustion, should the dashboard allow switching models mid-session without losing context?
+
+---
+
+### Topic D: Pair-Programming Dynamic & Turn Roles
+* **Context**: Two agents can either be completely symmetric peers, or assigned complementary personas.
+* **Questions**:
+  1. **Role Customization**:
+     * *Symmetric Peers*: Both agents act as general software engineers with equal standing.
+     * *Specialized Duo*:
+       * Mode 1: **Architect & Implementer** (Agent A designs specs/types/interfaces, Agent B implements and tests).
+       * Mode 2: **Author & Reviewer** (Agent A writes code, Agent B performs code review, tests, and security audits).
+       * Mode 3: **Debaters** (Agents engage in structured debate or research tradeoffs).
+  2. Should the role profile be selectable in the session creation modal?
+
+---
+
+### Topic E: Dashboard Tech Stack & Distribution
+* **Context**: How the dashboard and orchestrator are run.
+* **Questions**:
+  1. **Zero-Build Vanilla SPA (Recommended)**:
+     * Built with standard HTML, Tailwind CSS (via CDN or pre-compiled CSS), and modern Vanilla JS with WebSockets.
+     * Starts in < 1 second with `npm start` with zero Vite/Webpack bundling steps.
+  2. **React + Vite Dashboard**:
+     * Richer component library ecosystem, requires running `npm run build` or a Vite dev server.
+
