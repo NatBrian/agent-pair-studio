@@ -105,7 +105,29 @@ function formatContent(text) {
   if (!text || !text.trim()) {
     return '<span class="text-slate-500 italic">(No response content)</span>';
   }
-  let safe = escapeHtml(text);
+  let cleanText = text;
+  // If the text starts with a JSON object, unwrap assistant text parts
+  if (cleanText.trim().startsWith('{')) {
+    try {
+      const parts = [];
+      const lines = cleanText.split('\n');
+      for (const line of lines) {
+        const tr = line.trim();
+        if (tr.startsWith('{') && tr.endsWith('}')) {
+          const p = JSON.parse(tr);
+          if (p.part && typeof p.part.text === 'string') {
+            const t = p.part.text.trim();
+            if (t) parts.push(t);
+          } else if (typeof p.text === 'string') {
+            const t = p.text.trim();
+            if (t) parts.push(t);
+          }
+        }
+      }
+      if (parts.length > 0) cleanText = parts.join('\n\n');
+    } catch {}
+  }
+  let safe = escapeHtml(cleanText);
   // Code blocks: ```lang ... ```
   safe = safe.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_m, lang, code) => {
     return `<div class="my-2 rounded bg-slate-950 border border-slate-800 p-2 font-mono text-[11px] overflow-x-auto"><div class="text-slate-500 text-[10px] mb-1 font-semibold uppercase">${lang || 'code'}</div><pre class="text-emerald-400">${code.trim()}</pre></div>`;

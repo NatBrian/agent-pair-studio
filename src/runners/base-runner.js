@@ -104,14 +104,32 @@ export class BaseRunner {
       if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
         try {
           const parsed = JSON.parse(trimmed);
-          if (parsed.text) textParts.push(parsed.text);
-          if (parsed.content) textParts.push(parsed.content);
-          if (parsed.message) textParts.push(parsed.message);
-          if (parsed.response) textParts.push(parsed.response);
+          // 1. Kilo NDJSON format: { type: 'text', part: { text: '...' } }
+          if (parsed.part && typeof parsed.part.text === 'string') {
+            const t = parsed.part.text.trim();
+            if (t) textParts.push(t);
+          }
+          // 2. Cline format or standard assistant message
+          else if (typeof parsed.text === 'string') {
+            const t = parsed.text.trim();
+            if (t) textParts.push(t);
+          }
+          else if (typeof parsed.content === 'string') {
+            const t = parsed.content.trim();
+            if (t) textParts.push(t);
+          }
+          else if (typeof parsed.message === 'string') {
+            const t = parsed.message.trim();
+            if (t) textParts.push(t);
+          }
+          else if (typeof parsed.response === 'string') {
+            const t = parsed.response.trim();
+            if (t) textParts.push(t);
+          }
         } catch {}
       }
     }
-    if (textParts.length > 0) return textParts.join('\n');
+    if (textParts.length > 0) return textParts.join('\n\n');
     const cleanOut = stdout.trim();
     if (cleanOut) return cleanOut;
     const cleanErr = stderr.trim();

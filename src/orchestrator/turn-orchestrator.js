@@ -96,9 +96,12 @@ export class TurnOrchestrator extends EventEmitter {
     let prompt = overridePrompt;
     if (!prompt) {
       const lastTurn = this.session.history[this.session.history.length - 1];
-      const peerMsg = (lastTurn && lastTurn.text && lastTurn.text.trim())
+      let peerMsg = (lastTurn && lastTurn.text && lastTurn.text.trim())
         ? lastTurn.text.trim()
         : `I have updated the workspace for "${this.session.topic}". Please inspect BLACKBOARD.md and proceed with your step.`;
+      if (peerMsg.length > 1500) {
+        peerMsg = peerMsg.slice(0, 1500) + '... (see BLACKBOARD.md for details)';
+      }
       prompt = `[${peer.toUpperCase()}]: ${peerMsg}`;
     }
 
