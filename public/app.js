@@ -16,6 +16,38 @@ function initTerminal() {
 }
 
 let isPaused = false;
+let reconnectTimer = null;
+
+function updateConnectionStatus(status) {
+  const dot = document.getElementById('connDot');
+  const text = document.getElementById('connText');
+  const alertEl = document.getElementById('alertConnection');
+  const alertText = document.getElementById('alertConnectionText');
+  if (!dot || !text) return;
+
+  if (status === 'connected') {
+    dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+    text.textContent = 'Connected';
+    text.className = 'text-emerald-400 font-medium';
+    if (alertEl) alertEl.classList.add('hidden');
+  } else if (status === 'reconnecting') {
+    dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+    text.textContent = 'Reconnecting...';
+    text.className = 'text-amber-300';
+    if (alertEl) {
+      alertEl.classList.remove('hidden');
+      if (alertText) alertText.textContent = '⚠️ Connection to server lost. Reconnecting to backend...';
+    }
+  } else if (status === 'disconnected') {
+    dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+    text.textContent = 'Disconnected';
+    text.className = 'text-rose-400';
+    if (alertEl) {
+      alertEl.classList.remove('hidden');
+      if (alertText) alertText.textContent = '⚠️ Backend unreachable. Check if server is running on http://localhost:3000.';
+    }
+  }
+}
 
 function updatePauseButton(paused) {
   const btn = document.getElementById('btnPause');
@@ -23,7 +55,7 @@ function updatePauseButton(paused) {
   isPaused = paused;
   if (paused) {
     btn.textContent = '▶️ Resume';
-    btn.className = 'bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded font-medium transition';
+    btn.className = 'bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded font-medium transition shadow';
     btn.title = 'Resume autonomous turn-taking';
   } else {
     btn.textContent = '⏸️ Pause';
@@ -33,37 +65,79 @@ function updatePauseButton(paused) {
 }
 
 function connectWs() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  updateConnectionStatus('reconnecting');
+
   ws = new WebSocket(`${protocol}//${location.host}`);
+
+  ws.onopen = () => {
+    updateConnectionStatus('connected');
+  };
+
+  ws.onclose = () => {
+    updateConnectionStatus('reconnecting');
+    reconnectTimer = setTimeout(connectWs, 2500);
+  };
+
+  ws.onerror = () => {
+    updateConnectionStatus('disconnected');
+  };
 
   ws.onmessage = (event) => {
     const { type, payload } = JSON.parse(event.data);
     if (type === 'turn_start') {
       updatePauseButton(false);
+      hideSessionBanner();
       updateActiveBadge(payload.agent, payload.turn);
+      updateWaitingBadge(payload.agent);
+      showLiveTurnCard(payload.agent, payload.turn, 'Analyzing instructions and planning response...');
+    } else if (type === 'agent_event') {
+      const summary = extractEventSummary(payload.event);
+      if (summary) updateLiveTurnStatus(summary);
     } else if (type === 'terminal_output') {
       if (terminal) terminal.write(payload.chunk);
+      updateLiveTurnSnippet(payload.chunk);
     } else if (type === 'turn_end') {
+      hideLiveTurnCard();
+      updateWaitingBadge(null);
       appendChatMessage(payload.agent, payload.text, payload.turn, payload.diff);
       refreshFileTree();
       loadSessionsList();
     } else if (type === 'paused') {
+      hideLiveTurnCard();
       updatePauseButton(true);
       updateActiveBadge('PAUSED', 0);
+      updateWaitingBadge(null);
+      showSessionBanner('paused', 'Session Paused', 'Autonomous handoffs are suspended. Click Resume or send an instruction to continue.', true);
     } else if (type === 'resumed') {
       updatePauseButton(false);
+      hideSessionBanner();
     } else if (type === 'stopped') {
+      hideLiveTurnCard();
       updatePauseButton(false);
       updateActiveBadge('STOPPED', 0);
+      updateWaitingBadge(null);
+      showSessionBanner('stopped', 'Session Stopped', 'Agent CLI processes terminated. You can send a new instruction below to continue collaboration.', false);
     } else if (type === 'completed') {
+      hideLiveTurnCard();
       updatePauseButton(false);
       updateActiveBadge('COMPLETED', 0);
-      alert('Goal achieved or conversation completed!');
+      updateWaitingBadge(null);
+      showSessionBanner('completed', 'Goal Completed', 'Both agents reached consensus that the goal is achieved! Send an instruction if you want follow-up work.', false);
     } else if (type === 'paused_for_human') {
+      hideLiveTurnCard();
       updatePauseButton(true);
       updateActiveBadge('AWAITING HUMAN', 0);
+      updateWaitingBadge(null);
+      showSessionBanner('human', 'Agents Request Decision', payload.question, false);
       appendChatMessage('system', `⚠️ Agents requested your decision: "${payload.question}"`, 0);
     } else if (type === 'turn_error') {
+      hideLiveTurnCard();
+      updateWaitingBadge(null);
       appendChatMessage('system', `❌ Error: ${payload.error} (${payload.classification})`, payload.turn);
     }
   };
@@ -71,34 +145,176 @@ function connectWs() {
 
 function updateActiveBadge(agent, turn) {
   const badge = document.getElementById('badgeActiveAgent');
+  if (!badge) return;
   if (agent === 'kilo') {
-    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-purple-900 text-purple-200 border border-purple-700';
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-purple-900 text-purple-200 border border-purple-700 animate-pulse';
     badge.textContent = `KILO RUNNING (Turn ${turn})`;
   } else if (agent === 'cline') {
-    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-emerald-900 text-emerald-200 border border-emerald-700';
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-emerald-900 text-emerald-200 border border-emerald-700 animate-pulse';
     badge.textContent = `CLINE RUNNING (Turn ${turn})`;
   } else if (agent === 'COMPLETED') {
     badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-blue-900 text-blue-200 border border-blue-700';
-    badge.textContent = 'COMPLETED';
+    badge.textContent = '🏁 COMPLETED';
   } else if (agent === 'PAUSED') {
     badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-amber-900 text-amber-200 border border-amber-700';
-    badge.textContent = 'PAUSED';
+    badge.textContent = '⏸️ PAUSED';
   } else if (agent === 'STOPPED') {
     badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-rose-900 text-rose-200 border border-rose-700';
-    badge.textContent = 'STOPPED';
+    badge.textContent = '🛑 STOPPED';
   } else if (agent === 'AWAITING HUMAN') {
     badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-amber-900 text-amber-200 border border-amber-700 animate-pulse';
-    badge.textContent = 'AWAITING INPUT';
+    badge.textContent = '⚠️ AWAITING INPUT';
   } else {
-    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-slate-800 text-slate-400';
-    badge.textContent = agent;
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-slate-800 text-slate-400 border border-slate-700';
+    badge.textContent = agent || 'IDLE';
   }
+}
+
+function updateWaitingBadge(runningAgent) {
+  const badge = document.getElementById('badgeWaitingAgent');
+  if (!badge) return;
+  if (runningAgent === 'kilo') {
+    badge.classList.remove('hidden');
+    badge.innerHTML = `<span class="text-emerald-400 font-semibold">Cline</span> is waiting...`;
+  } else if (runningAgent === 'cline') {
+    badge.classList.remove('hidden');
+    badge.innerHTML = `<span class="text-purple-400 font-semibold">Kilo</span> is waiting...`;
+  } else {
+    badge.classList.add('hidden');
+    badge.textContent = '';
+  }
+}
+
+function showLiveTurnCard(agent, turn, statusText) {
+  const card = document.getElementById('liveTurnIndicator');
+  const chat = document.getElementById('chatMessages');
+  const placeholder = document.getElementById('chatEmptyPlaceholder');
+  if (placeholder) placeholder.classList.add('hidden');
+  if (!card) return;
+
+  const isKilo = agent === 'kilo';
+  card.className = `p-3 rounded text-xs space-y-2 shadow-lg transition ${isKilo ? 'live-card-kilo' : 'live-card-cline'}`;
+
+  const pingDot = document.getElementById('livePingDot');
+  const solidDot = document.getElementById('liveSolidDot');
+  const agentName = document.getElementById('liveAgentName');
+  const turnBadge = document.getElementById('liveTurnBadge');
+  const partnerWaiting = document.getElementById('livePartnerWaiting');
+  const statusEl = document.getElementById('liveStatusText');
+  const snippetBox = document.getElementById('liveSnippetContainer');
+
+  if (pingDot) pingDot.className = `animate-ping absolute inline-flex h-full w-full rounded-full ${isKilo ? 'bg-purple-400' : 'bg-emerald-400'} opacity-75`;
+  if (solidDot) solidDot.className = `relative inline-flex rounded-full h-2.5 w-2.5 ${isKilo ? 'bg-purple-500' : 'bg-emerald-500'}`;
+  if (agentName) {
+    agentName.textContent = isKilo ? 'KILO IS RUNNING' : 'CLINE IS RUNNING';
+    agentName.className = `font-bold ${isKilo ? 'text-purple-400' : 'text-emerald-400'}`;
+  }
+  if (turnBadge) turnBadge.textContent = `Turn ${turn}`;
+  if (partnerWaiting) partnerWaiting.textContent = isKilo ? 'Cline is waiting for turn to finish...' : 'Kilo is waiting for turn to finish...';
+  if (statusEl) statusEl.textContent = statusText || 'Analyzing instructions and planning response...';
+  if (snippetBox) snippetBox.classList.add('hidden');
+
+  card.classList.remove('hidden');
+  if (chat) chat.scrollTop = chat.scrollHeight;
+}
+
+function updateLiveTurnStatus(statusText) {
+  const statusEl = document.getElementById('liveStatusText');
+  if (statusEl && statusText) {
+    statusEl.textContent = statusText;
+  }
+}
+
+function updateLiveTurnSnippet(chunk) {
+  const snippetBox = document.getElementById('liveSnippetContainer');
+  const snippetText = document.getElementById('liveSnippetText');
+  if (!snippetBox || !snippetText || !chunk) return;
+  const clean = chunk.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim();
+  if (!clean) return;
+  const lines = clean.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length > 0) {
+    snippetText.textContent = lines[lines.length - 1].slice(0, 120);
+    snippetBox.classList.remove('hidden');
+  }
+}
+
+function hideLiveTurnCard() {
+  const card = document.getElementById('liveTurnIndicator');
+  if (card) card.classList.add('hidden');
+}
+
+function showSessionBanner(type, title, message, showResumeBtn) {
+  const banner = document.getElementById('sessionStateBanner');
+  const icon = document.getElementById('bannerIcon');
+  const titleEl = document.getElementById('bannerTitle');
+  const msgEl = document.getElementById('bannerMessage');
+  const resumeBtn = document.getElementById('btnBannerResume');
+  if (!banner) return;
+
+  banner.className = `mb-2 p-3 rounded text-xs flex items-center justify-between transition-all banner-${type}`;
+
+  if (type === 'paused') {
+    if (icon) icon.textContent = '⏸️';
+  } else if (type === 'stopped') {
+    if (icon) icon.textContent = '🛑';
+  } else if (type === 'completed') {
+    if (icon) icon.textContent = '🎉';
+  } else if (type === 'human') {
+    if (icon) icon.textContent = '⚠️';
+  }
+
+  if (titleEl) titleEl.textContent = title;
+  if (msgEl) msgEl.textContent = message;
+
+  if (resumeBtn) {
+    if (showResumeBtn) {
+      resumeBtn.classList.remove('hidden');
+    } else {
+      resumeBtn.classList.add('hidden');
+    }
+  }
+
+  banner.classList.remove('hidden');
+}
+
+function hideSessionBanner() {
+  const banner = document.getElementById('sessionStateBanner');
+  if (banner) banner.classList.add('hidden');
+}
+
+function extractEventSummary(event) {
+  if (!event || typeof event !== 'object') return null;
+  if (event.say === 'tool' || event.say === 'command') {
+    return `Executing command: ${event.text || event.command || 'tool call'}...`;
+  }
+  if (event.say === 'browser_action') {
+    return 'Executing browser action...';
+  }
+  if (event.say === 'text') {
+    return 'Formulating response...';
+  }
+  if (event.say === 'user_feedback') {
+    return 'Requesting user decision...';
+  }
+  if (event.tool) {
+    return `Calling tool: ${event.tool}...`;
+  }
+  if (event.part && typeof event.part.text === 'string') {
+    return 'Writing code / response...';
+  }
+  if (event.type === 'message') {
+    return 'Preparing handoff to peer...';
+  }
+  return 'Processing step...';
 }
 
 let selectedFilePath = null;
 
 function appendChatMessage(agent, text, turn, diff) {
   const chat = document.getElementById('chatMessages');
+  const placeholder = document.getElementById('chatEmptyPlaceholder');
+  if (placeholder) placeholder.classList.add('hidden');
+
   const card = document.createElement('div');
   const isKilo = agent === 'kilo';
   const isCline = agent === 'cline';
@@ -127,7 +343,13 @@ function appendChatMessage(agent, text, turn, diff) {
     <div class="text-slate-200 leading-relaxed">${formatContent(text)}</div>
     ${formatDiff(diff)}
   `;
-  chat.appendChild(card);
+
+  const indicator = document.getElementById('liveTurnIndicator');
+  if (indicator && indicator.parentNode === chat) {
+    chat.insertBefore(card, indicator);
+  } else {
+    chat.appendChild(card);
+  }
   chat.scrollTop = chat.scrollHeight;
 }
 
@@ -257,15 +479,37 @@ async function loadSessionsList() {
   } catch {}
 }
 
+function clearChatMessages() {
+  const chat = document.getElementById('chatMessages');
+  const placeholder = document.getElementById('chatEmptyPlaceholder');
+  const indicator = document.getElementById('liveTurnIndicator');
+  if (!chat) return;
+  chat.innerHTML = '';
+  if (placeholder) {
+    placeholder.classList.remove('hidden');
+    chat.appendChild(placeholder);
+  }
+  if (indicator) {
+    indicator.classList.add('hidden');
+    chat.appendChild(indicator);
+  }
+}
+
 async function loadSessionDetails(sessionId) {
   try {
     const res = await fetch(`/api/sessions/${sessionId}`);
     const sess = await res.json();
     document.getElementById('lblSessionTitle').textContent = sess.topic || sess.id;
     updateActiveBadge('IDLE', sess.history ? sess.history.length : 0);
-    const chat = document.getElementById('chatMessages');
-    chat.innerHTML = '';
-    if (sess.history) {
+    updateWaitingBadge(null);
+    hideLiveTurnCard();
+    hideSessionBanner();
+
+    clearChatMessages();
+
+    if (sess.history && sess.history.length > 0) {
+      const placeholder = document.getElementById('chatEmptyPlaceholder');
+      if (placeholder) placeholder.classList.add('hidden');
       for (const turn of sess.history) {
         appendChatMessage(turn.agent, turn.text, turn.turn, turn.diff);
       }
@@ -317,7 +561,7 @@ document.getElementById('btnConfirmStart').onclick = () => {
   ws.send(JSON.stringify({ action: 'start_session', payload: { topic, kiloModel, clineModel, startingAgent } }));
   document.getElementById('modalNewSession').classList.add('hidden');
   document.getElementById('lblSessionTitle').textContent = topic || 'Autonomous Task';
-  document.getElementById('chatMessages').innerHTML = '';
+  clearChatMessages();
 };
 
 document.getElementById('btnSurpriseMe').onclick = () => {
@@ -328,7 +572,7 @@ document.getElementById('btnSurpriseMe').onclick = () => {
   ws.send(JSON.stringify({ action: 'start_session', payload: { isIdeation: true, kiloModel, clineModel, startingAgent } }));
   document.getElementById('modalNewSession').classList.add('hidden');
   document.getElementById('lblSessionTitle').textContent = '✨ Agent-Initiated Ideation';
-  document.getElementById('chatMessages').innerHTML = '';
+  clearChatMessages();
 };
 
 document.getElementById('btnSendHuman').onclick = () => {
@@ -352,6 +596,22 @@ document.getElementById('btnPause').onclick = () => {
 document.getElementById('btnStop').onclick = () => {
   ws.send(JSON.stringify({ action: 'stop' }));
 };
+
+const btnBannerResume = document.getElementById('btnBannerResume');
+if (btnBannerResume) {
+  btnBannerResume.onclick = () => {
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ action: 'resume' }));
+    }
+  };
+}
+
+const btnRetryConnect = document.getElementById('btnRetryConnect');
+if (btnRetryConnect) {
+  btnRetryConnect.onclick = () => {
+    connectWs();
+  };
+}
 
 window.onload = () => {
   initTerminal();
