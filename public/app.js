@@ -622,25 +622,25 @@ function updateActiveBadge(agent, turn) {
   const badge = document.getElementById('badgeActiveAgent');
   if (!badge) return;
   if (agent === 'kilo') {
-    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-purple-900 text-purple-200 border border-purple-700 animate-pulse';
-    badge.textContent = `KILO RUNNING (Turn ${turn})`;
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-purple-950 text-purple-300 border border-purple-800 shadow-sm shrink-0 whitespace-nowrap animate-pulse';
+    badge.textContent = `KILO (Turn ${turn})`;
   } else if (agent === 'cline') {
-    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-emerald-900 text-emerald-200 border border-emerald-700 animate-pulse';
-    badge.textContent = `CLINE RUNNING (Turn ${turn})`;
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-emerald-950 text-emerald-300 border border-emerald-800 shadow-sm shrink-0 whitespace-nowrap animate-pulse';
+    badge.textContent = `CLINE (Turn ${turn})`;
   } else if (agent === 'COMPLETED') {
-    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-blue-900 text-blue-200 border border-blue-700';
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-blue-950 text-blue-300 border border-blue-800 shadow-sm shrink-0 whitespace-nowrap';
     badge.textContent = '🏁 COMPLETED';
   } else if (agent === 'PAUSED') {
-    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-amber-900 text-amber-200 border border-amber-700';
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-amber-950 text-amber-300 border border-amber-800 shadow-sm shrink-0 whitespace-nowrap';
     badge.textContent = '⏸️ PAUSED';
   } else if (agent === 'STOPPED') {
-    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-rose-900 text-rose-200 border border-rose-700';
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-rose-950 text-rose-300 border border-rose-800 shadow-sm shrink-0 whitespace-nowrap';
     badge.textContent = '🛑 STOPPED';
   } else if (agent === 'AWAITING HUMAN') {
-    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-amber-900 text-amber-200 border border-amber-700 animate-pulse';
-    badge.textContent = '⚠️ AWAITING INPUT';
+    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-amber-950 text-amber-300 border border-amber-800 shadow-sm shrink-0 whitespace-nowrap animate-pulse';
+    badge.textContent = '⚠️ INPUT REQ';
   } else {
-    badge.className = 'px-2 py-0.5 text-xs rounded-full font-mono bg-slate-800 text-slate-400 border border-slate-700';
+    badge.className = 'px-2.5 py-0.5 text-xs rounded-full font-mono bg-purple-950 text-purple-300 border border-purple-800 shadow-sm shrink-0 whitespace-nowrap';
     badge.textContent = agent || 'IDLE';
   }
 }
@@ -649,11 +649,11 @@ function updateWaitingBadge(runningAgent) {
   const badge = document.getElementById('badgeWaitingAgent');
   if (!badge) return;
   if (runningAgent === 'kilo') {
-    badge.classList.remove('hidden');
-    badge.innerHTML = `<span class="text-emerald-400 font-semibold">Cline</span> is waiting...`;
+    badge.className = 'px-2 py-0.5 text-[11px] rounded-full font-mono bg-slate-800 text-slate-400 border border-slate-700 shrink-0 whitespace-nowrap hidden lg:inline-flex';
+    badge.innerHTML = `<span class="text-emerald-400 font-semibold">Cline</span> waiting`;
   } else if (runningAgent === 'cline') {
-    badge.classList.remove('hidden');
-    badge.innerHTML = `<span class="text-purple-400 font-semibold">Kilo</span> is waiting...`;
+    badge.className = 'px-2 py-0.5 text-[11px] rounded-full font-mono bg-slate-800 text-slate-400 border border-slate-700 shrink-0 whitespace-nowrap hidden lg:inline-flex';
+    badge.innerHTML = `<span class="text-purple-400 font-semibold">Kilo</span> waiting`;
   } else {
     badge.classList.add('hidden');
     badge.textContent = '';
@@ -820,19 +820,21 @@ window.copyTurnMessage = function(btn, cardId) {
 function configureMarked() {
   if (typeof marked === 'undefined') return;
   const renderer = new marked.Renderer();
-  renderer.code = function(code, lang) {
+  renderer.code = function(tokenOrCode, maybeLang) {
+    const rawCode = typeof tokenOrCode === 'object' ? (tokenOrCode.text || '') : (tokenOrCode || '');
+    const rawLang = (typeof tokenOrCode === 'object' ? tokenOrCode.lang : maybeLang) || '';
     let highlighted;
-    const validLang = lang && typeof hljs !== 'undefined' && hljs.getLanguage(lang) ? lang : '';
+    const validLang = rawLang && typeof hljs !== 'undefined' && hljs.getLanguage(rawLang) ? rawLang : '';
     try {
       if (typeof hljs !== 'undefined') {
-        highlighted = validLang ? hljs.highlight(code, { language: validLang }).value : hljs.highlightAuto(code).value;
+        highlighted = validLang ? hljs.highlight(rawCode, { language: validLang }).value : hljs.highlightAuto(rawCode).value;
       } else {
-        highlighted = escapeHtml(code);
+        highlighted = escapeHtml(rawCode);
       }
     } catch {
-      highlighted = escapeHtml(code);
+      highlighted = escapeHtml(rawCode);
     }
-    const displayLang = (validLang || lang || 'code').toUpperCase();
+    const displayLang = (validLang || rawLang || 'code').toUpperCase();
     return `
       <div class="code-block-wrapper">
         <div class="code-header">
@@ -1095,21 +1097,19 @@ function renderFilteredSessions() {
   for (const sess of filtered) {
     const isActive = termManager && termManager.currentSessionId === sess.id;
     const el = document.createElement('div');
-    el.className = `session-item ${isActive ? 'active' : ''}`;
+    el.className = `session-item ${isActive ? 'active' : ''} min-w-0 overflow-hidden`;
 
     const firstAgent = sess.history && sess.history[0] ? sess.history[0].agent : null;
     const agentBadge = firstAgent === 'kilo' ? '🟣' : (firstAgent === 'cline' ? '🟢' : '⚡');
 
     el.innerHTML = `
-      <div class="flex items-center justify-between gap-1.5">
-        <span class="font-semibold text-slate-200 truncate flex items-center gap-1.5">
-          <span>${agentBadge}</span>
-          <span class="truncate">${escapeHtml(sess.topic || sess.id)}</span>
-        </span>
+      <div class="flex items-center gap-1.5 min-w-0">
+        <span class="shrink-0 text-xs">${agentBadge}</span>
+        <span class="font-semibold text-slate-200 truncate min-w-0 text-xs flex-1">${escapeHtml(sess.topic || sess.id)}</span>
       </div>
-      <div class="text-[10px] text-slate-500 font-mono mt-1 flex justify-between items-center">
-        <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-800 text-slate-400">${sess.turns} turns</span>
-        <span>${new Date(sess.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      <div class="text-[10px] text-slate-500 font-mono mt-1 flex justify-between items-center min-w-0">
+        <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-800 text-slate-400 shrink-0">${sess.turns} turns</span>
+        <span class="shrink-0 text-slate-500 text-[10px]">${new Date(sess.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
     `;
     el.onclick = () => {
