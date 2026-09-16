@@ -99,4 +99,100 @@ test('TurnOrchestrator immediately interrupts running runner and redirects targe
   assert.equal(orchestrator.whisperQueues.cline[0], 'Stop and switch to SQLite');
 });
 
+test('TurnOrchestrator pause() cancels active runner, sets PAUSED state, and emits paused event', async () => {
+  const orchestrator = new TurnOrchestrator({ workspaceDir: process.cwd() });
+  orchestrator.session = { id: 'test-pause', topic: 'Pause test', history: [] };
+  orchestrator.state = 'RUNNING';
+
+  let cancelCalled = false;
+  orchestrator.runnerInstance = {
+    cancel: async () => { cancelCalled = true; }
+  };
+
+  let pausedEmitted = false;
+  orchestrator.on('paused', () => { pausedEmitted = true; });
+
+  await orchestrator.pause();
+
+  assert.equal(orchestrator.state, 'PAUSED');
+  assert.equal(cancelCalled, true);
+  assert.equal(pausedEmitted, true);
+});
+
+test('TurnOrchestrator stop() cancels active runner, sets IDLE state, and emits stopped event', async () => {
+  const orchestrator = new TurnOrchestrator({ workspaceDir: process.cwd() });
+  orchestrator.session = { id: 'test-stop', topic: 'Stop test', history: [] };
+  orchestrator.state = 'RUNNING';
+
+  let cancelCalled = false;
+  orchestrator.runnerInstance = {
+    cancel: async () => { cancelCalled = true; }
+  };
+
+  let stoppedEmitted = false;
+  orchestrator.on('stopped', () => { stoppedEmitted = true; });
+
+  await orchestrator.stop();
+
+  assert.equal(orchestrator.state, 'IDLE');
+  assert.equal(cancelCalled, true);
+  assert.equal(stoppedEmitted, true);
+});
+
+test('TurnOrchestrator executeTurnStep cleanly handles pause cancellation without error or phantom turns', async () => {
+  const orchestrator = new TurnOrchestrator({ workspaceDir: process.cwd() });
+  orchestrator.session = { id: 'test-cancel-pause', topic: 'Cancel pause test', history: [] };
+  orchestrator.state = 'RUNNING';
+
+  let errorEmitted = false;
+  orchestrator.on('turn_error', () => { errorEmitted = true; });
+  let turnEndEmitted = false;
+  orchestrator.on('turn_end', () => { turnEndEmitted = true; });
+
+  orchestrator.createRunner = () => ({
+    executeTurn: async () => {
+      // Simulate orchestrator.pause() being triggered mid-run
+      await orchestrator.pause();
+      return { wasCancelled: true, exitCode: 1, text: '', rawStderr: 'Killed' };
+    },
+    cancel: async () => {}
+  });
+
+  await orchestrator.executeTurnStep();
+
+  assert.equal(orchestrator.state, 'PAUSED');
+  assert.equal(orchestrator.currentTurn, 0);
+  assert.equal(orchestrator.session.history.length, 0);
+  assert.equal(errorEmitted, false);
+  assert.equal(turnEndEmitted, false);
+});
+
+test('TurnOrchestrator executeTurnStep cleanly handles stop cancellation without error or phantom turns', async () => {
+  const orchestrator = new TurnOrchestrator({ workspaceDir: process.cwd() });
+  orchestrator.session = { id: 'test-cancel-stop', topic: 'Cancel stop test', history: [] };
+  orchestrator.state = 'RUNNING';
+
+  let errorEmitted = false;
+  orchestrator.on('turn_error', () => { errorEmitted = true; });
+  let turnEndEmitted = false;
+  orchestrator.on('turn_end', () => { turnEndEmitted = true; });
+
+  orchestrator.createRunner = () => ({
+    executeTurn: async () => {
+      // Simulate orchestrator.stop() being triggered mid-run
+      await orchestrator.stop();
+      return { wasCancelled: true, exitCode: 1, text: '', rawStderr: 'Killed' };
+    },
+    cancel: async () => {}
+  });
+
+  await orchestrator.executeTurnStep();
+
+  assert.equal(orchestrator.state, 'IDLE');
+  assert.equal(orchestrator.currentTurn, 0);
+  assert.equal(orchestrator.session.history.length, 0);
+  assert.equal(errorEmitted, false);
+  assert.equal(turnEndEmitted, false);
+});
+
 

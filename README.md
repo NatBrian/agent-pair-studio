@@ -2,11 +2,13 @@
 
 An autonomous pair-programming and collaborative execution harness between **Kilo CLI** and **Cline CLI** on Windows, featuring strict sandbox containment, equal peer hierarchy, dual-layer memory, Git time-machine checkpoints, and a live multi-tab web dashboard.
 
+![](docs/dashboard_example.png)
+
 ---
 
 ## 🌟 Overview & Vision
 
-**Agent Pair Studio** connects two leading terminal coding agents—**Kilo** and **Cline**—into an autonomous, collaborative development team. Neither agent is a manager or subordinate; both interact as equal technical colleagues working together in a shared workspace.
+**Agent Pair Studio** connects two leading terminal coding agents **Kilo** and **Cline** into an autonomous, collaborative development team. Neither agent is a manager or subordinate; both interact as equal technical colleagues working together in a shared workspace.
 
 ### Key Capabilities
 

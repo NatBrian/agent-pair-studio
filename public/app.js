@@ -656,6 +656,8 @@ function connectWs() {
       updatePauseButton(false);
       hideSessionBanner();
     } else if (type === 'stopped') {
+      const btnStop = document.getElementById('btnStop');
+      if (btnStop) btnStop.textContent = 'Stop';
       hideLiveTurnCard();
       updatePauseButton(false);
       updateActiveBadge('STOPPED', 0);
@@ -1343,14 +1345,22 @@ document.getElementById('txtHumanInput').addEventListener('keydown', (e) => {
 });
 
 document.getElementById('btnPause').onclick = () => {
+  const btn = document.getElementById('btnPause');
   if (isPaused) {
+    updateActiveBadge('RESUMING...', 0);
+    if (btn) btn.textContent = '⏳ Resuming...';
     ws.send(JSON.stringify({ action: 'resume' }));
   } else {
+    updateActiveBadge('PAUSING...', 0);
+    if (btn) btn.textContent = '⏳ Pausing...';
     ws.send(JSON.stringify({ action: 'pause' }));
   }
 };
 
 document.getElementById('btnStop').onclick = () => {
+  updateActiveBadge('STOPPING...', 0);
+  const btn = document.getElementById('btnStop');
+  if (btn) btn.textContent = '⏳ Stopping...';
   ws.send(JSON.stringify({ action: 'stop' }));
 };
 

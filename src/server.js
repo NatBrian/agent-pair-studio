@@ -130,7 +130,7 @@ export function createServerApp({ port = config.PORT, workspaceDir = config.WORK
         if (action === 'start_session') {
           await orchestrator.startSession(payload);
         } else if (action === 'pause') {
-          orchestrator.pause();
+          await orchestrator.pause();
         } else if (action === 'resume') {
           orchestrator.resume();
         } else if (action === 'stop') {

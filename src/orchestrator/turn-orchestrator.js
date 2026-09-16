@@ -161,9 +161,11 @@ export class TurnOrchestrator extends EventEmitter {
       prompt = `${humanNote}\n\n${prompt}`;
     }
 
-    const runner = agent === 'kilo'
-      ? new KiloRunner({ cwd: this.workspaceDir, model: this.session.kiloModel, timeoutSeconds: config.LOOP_LIMITS.TURN_TIMEOUT_SECONDS })
-      : new ClineRunner({ cwd: this.workspaceDir, model: this.session.clineModel, timeoutSeconds: config.LOOP_LIMITS.TURN_TIMEOUT_SECONDS });
+    const runner = this.createRunner
+      ? this.createRunner(agent)
+      : (agent === 'kilo'
+        ? new KiloRunner({ cwd: this.workspaceDir, model: this.session.kiloModel, timeoutSeconds: config.LOOP_LIMITS.TURN_TIMEOUT_SECONDS })
+        : new ClineRunner({ cwd: this.workspaceDir, model: this.session.clineModel, timeoutSeconds: config.LOOP_LIMITS.TURN_TIMEOUT_SECONDS }));
 
     this.runnerInstance = runner;
     this.emit('turn_start', { turn: this.currentTurn, agent, prompt });
@@ -187,6 +189,12 @@ export class TurnOrchestrator extends EventEmitter {
         (chunk) => this.emit('terminal_output', { turn: this.currentTurn, agent, chunk })
       );
     } catch (err) {
+      if (this.state === 'PAUSED' || this.state === 'IDLE') {
+        if (this.session && this.currentTurn > this.session.history.length) {
+          this.currentTurn = this.session.history.length;
+        }
+        return;
+      }
       if (this.interruptedForSteering) {
         this.interruptedForSteering = false;
         await this.handleSteeringInterruption(agent, prompt, err.message);
@@ -195,11 +203,29 @@ export class TurnOrchestrator extends EventEmitter {
       const classification = classifyError(1, err.message);
       this.emit('turn_error', { turn: this.currentTurn, agent, error: err.message, classification });
       return;
+    } finally {
+      if (this.runnerInstance === runner) {
+        this.runnerInstance = null;
+      }
     }
 
-    if (this.interruptedForSteering || (result && result.wasCancelled)) {
+    if (this.state === 'PAUSED' || this.state === 'IDLE') {
+      if (this.session && this.currentTurn > this.session.history.length) {
+        this.currentTurn = this.session.history.length;
+      }
+      return;
+    }
+
+    if (this.interruptedForSteering) {
       this.interruptedForSteering = false;
       await this.handleSteeringInterruption(agent, prompt, result ? result.text : '');
+      return;
+    }
+
+    if (result && result.wasCancelled) {
+      if (this.session && this.currentTurn > this.session.history.length) {
+        this.currentTurn = this.session.history.length;
+      }
       return;
     }
 
@@ -275,8 +301,11 @@ export class TurnOrchestrator extends EventEmitter {
     this.emit('stopped');
   }
 
-  pause() {
+  async pause() {
     this.state = 'PAUSED';
+    if (this.runnerInstance) {
+      await this.runnerInstance.cancel();
+    }
     this.emit('paused');
   }
 
@@ -284,7 +313,7 @@ export class TurnOrchestrator extends EventEmitter {
     if (this.state === 'PAUSED') {
       this.state = 'RUNNING';
       this.emit('resumed');
-      this.executeTurnStep();
+      setImmediate(() => this.executeTurnStep());
     }
   }
 
