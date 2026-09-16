@@ -16,7 +16,8 @@ Both agents run in **`yolo` / `dangerously-skip-permissions` mode**, strictly co
 
 ## Documentation Index
 
-- [Discussion, Research & Questions Catalog](file:///C:/Users/Admin/Documents/Github/agent-collab-studio/docs/discussion-and-planning.md) - Deep dive into agent memory, collaboration dynamics, ACP vs. NDJSON protocols, free model handling, containment, and upcoming discussion topics.
-- [Implementation Plan Draft](file:///C:/Users/Admin/Documents/Github/agent-collab-studio/docs/implementation-plan-draft.md) - Phased technical blueprint covering project scaffolding, CLI subprocess runners, turn orchestrator, Git checkpoints, multi-tab web studio, and testing.
+- [Design Specification (Approved)](file:///C:/Users/Admin/Documents/Github/agent-collab-studio/docs/superpowers/specs/2026-09-16-agent-collab-studio-design.md) - Formal architecture specification covering equal peer hierarchy, containment, Kilo/Cline flags, Git branching, and dashboard layout.
+- [Detailed Implementation Plan (Bite-Sized Tasks)](file:///C:/Users/Admin/Documents/Github/agent-collab-studio/docs/superpowers/plans/2026-09-16-agent-collab-studio.md) - 11 comprehensive TDD tasks with exact code blocks, tests, and commit commands ready for execution.
+- [Discussion, Research & Questions Catalog](file:///C:/Users/Admin/Documents/Github/agent-collab-studio/docs/discussion-and-planning.md) - Detailed record of all research, architectural decisions, and alignment notes.
 - [Reference Learnings from Claude Octopus](file:///C:/Users/Admin/Documents/Github/agent-collab-studio/docs/reference-claude-octopus-learnings.md) - Architectural analysis and 6 battle-tested patterns adapted from `claude-octopus` (Kilo `--pure` hang fix, Windows process termination, path security, secret redaction, and error classification).
 
