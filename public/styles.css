@@ -1,0 +1,23 @@
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+.chat-card-kilo {
+  border-left: 3px solid #a855f7;
+}
+.chat-card-cline {
+  border-left: 3px solid #10b981;
+}
+.chat-card-human {
+  border-left: 3px solid #f59e0b;
+}

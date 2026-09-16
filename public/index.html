@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <title>Agent Collab Studio - Kilo & Cline</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-slate-950 text-slate-100 flex h-screen overflow-hidden font-sans">
+  <!-- Left Sidebar -->
+  <aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between">
+    <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-xl">🐙</span>
+        <h1 class="font-bold text-sm tracking-wide">COLLAB STUDIO</h1>
+      </div>
+      <button id="btnNewSession" class="bg-indigo-600 hover:bg-indigo-500 text-xs px-2.5 py-1.5 rounded font-medium">+ New</button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-2 space-y-1" id="sessionList">
+      <!-- Session items injected here -->
+    </div>
+    <div class="p-3 border-t border-slate-800 text-xs text-slate-400">
+      Workspace: <span class="text-slate-200 font-mono text-[10px]" id="lblWorkspace">kilo-cline-workspace</span>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 flex flex-col min-w-0">
+    <!-- Header -->
+    <header class="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4">
+      <div class="flex items-center gap-3">
+        <span id="badgeActiveAgent" class="px-2 py-0.5 text-xs rounded-full font-mono bg-purple-900 text-purple-300 border border-purple-700">IDLE</span>
+        <h2 id="lblSessionTitle" class="text-sm font-semibold truncate max-w-md">No Active Session</h2>
+      </div>
+      <div class="flex items-center gap-3">
+        <!-- Tab Selectors -->
+        <nav class="flex bg-slate-950 p-1 rounded border border-slate-800 text-xs">
+          <button id="tabBtnChat" class="px-3 py-1 rounded bg-slate-800 text-white font-medium">Chat Thread</button>
+          <button id="tabBtnExplorer" class="px-3 py-1 rounded text-slate-400 hover:text-white">Workspace Explorer</button>
+          <button id="tabBtnTerminal" class="px-3 py-1 rounded text-slate-400 hover:text-white">Live Terminal</button>
+        </nav>
+        <!-- Controls -->
+        <div class="flex items-center gap-1.5">
+          <button id="btnPause" class="bg-amber-600 hover:bg-amber-500 text-xs px-3 py-1.5 rounded font-medium">Pause</button>
+          <button id="btnStop" class="bg-red-600 hover:bg-red-500 text-xs px-3 py-1.5 rounded font-medium">Stop</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Tab Panels Container -->
+    <section class="flex-1 overflow-hidden relative">
+      <!-- Tab 1: Chat -->
+      <div id="panelChat" class="h-full flex flex-col p-4">
+        <div id="chatMessages" class="flex-1 overflow-y-auto space-y-3 pr-2">
+          <div class="text-center text-slate-500 text-xs py-10">Start a session or click "+ New" to begin autonomous collaboration.</div>
+        </div>
+        <!-- Input & Whisper Box -->
+        <div class="mt-3 bg-slate-900 border border-slate-800 rounded p-2 flex gap-2 items-center">
+          <select id="selInterventionMode" class="bg-slate-950 border border-slate-800 text-xs rounded px-2 py-1.5 text-slate-300">
+            <option value="broadcast">📢 Broadcast to Both</option>
+            <option value="whisper_kilo">🤫 Whisper to Kilo</option>
+            <option value="whisper_cline">🤫 Whisper to Cline</option>
+          </select>
+          <input id="txtHumanInput" type="text" placeholder="Guide or steer agents mid-conversation..." class="flex-1 bg-slate-950 border border-slate-800 text-xs rounded px-3 py-1.5 text-white focus:outline-none focus:border-indigo-500" />
+          <button id="btnSendHuman" class="bg-indigo-600 hover:bg-indigo-500 text-xs px-4 py-1.5 rounded font-medium">Send</button>
+        </div>
+      </div>
+
+      <!-- Tab 2: Explorer -->
+      <div id="panelExplorer" class="h-full hidden flex">
+        <div class="w-64 border-r border-slate-800 overflow-y-auto p-2" id="fileTree"></div>
+        <div class="flex-1 flex flex-col overflow-hidden">
+          <div class="h-8 bg-slate-900 border-b border-slate-800 px-3 flex items-center text-xs font-mono text-slate-400" id="currentFileTitle">No file selected</div>
+          <pre class="flex-1 overflow-auto p-4 text-xs font-mono bg-slate-950 text-slate-200" id="fileContentCode">// Select a file from the workspace</pre>
+        </div>
+      </div>
+
+      <!-- Tab 3: Terminal -->
+      <div id="panelTerminal" class="h-full hidden p-2 bg-black">
+        <div id="xtermContainer" class="h-full w-full"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- New Session Modal -->
+  <div id="modalNewSession" class="fixed inset-0 bg-black/70 flex items-center justify-center hidden z-50">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-5 w-full max-w-md shadow-2xl">
+      <h3 class="font-bold text-sm mb-3">Start New Pair-Programming Session</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Topic / Objective</label>
+          <input id="modalTopicInput" type="text" placeholder="e.g. Build a fast URL shortener in Go with tests" class="w-full bg-slate-950 border border-slate-800 text-xs rounded p-2 text-white" />
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Kilo Model</label>
+            <select id="modalKiloModel" class="w-full bg-slate-950 border border-slate-800 text-xs rounded p-2 text-slate-200"></select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Cline Model</label>
+            <select id="modalClineModel" class="w-full bg-slate-950 border border-slate-800 text-xs rounded p-2 text-slate-200"></select>
+          </div>
+        </div>
+        <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+          <button id="btnSurpriseMe" class="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-medium">✨ Surprise Me (Agent Ideation)</button>
+          <div class="flex gap-2">
+            <button id="btnCancelModal" class="px-3 py-1.5 text-xs rounded hover:bg-slate-800">Cancel</button>
+            <button id="btnConfirmStart" class="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 rounded font-medium">Start Collab</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
