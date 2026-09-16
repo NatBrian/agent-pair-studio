@@ -482,18 +482,24 @@ let reconnectTimer = null;
 
 function updateConnectionStatus(status) {
   const dot = document.getElementById('connDot');
+  const ping = document.getElementById('connPingDot');
   const text = document.getElementById('connText');
   const alertEl = document.getElementById('alertConnection');
   const alertText = document.getElementById('alertConnectionText');
   if (!dot || !text) return;
 
   if (status === 'connected') {
-    dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+    if (ping) {
+      ping.classList.remove('hidden');
+      ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+    }
     text.textContent = 'Connected';
     text.className = 'text-emerald-400 font-medium';
     if (alertEl) alertEl.classList.add('hidden');
   } else if (status === 'reconnecting') {
-    dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-400 animate-pulse';
+    if (ping) ping.classList.add('hidden');
     text.textContent = 'Reconnecting...';
     text.className = 'text-amber-300';
     if (alertEl) {
@@ -501,7 +507,8 @@ function updateConnectionStatus(status) {
       if (alertText) alertText.textContent = '⚠️ Connection to server lost. Reconnecting to backend...';
     }
   } else if (status === 'disconnected') {
-    dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-rose-500';
+    if (ping) ping.classList.add('hidden');
     text.textContent = 'Disconnected';
     text.className = 'text-rose-400';
     if (alertEl) {
@@ -778,37 +785,126 @@ function extractEventSummary(event) {
 
 let selectedFilePath = null;
 
+let messageCounter = 0;
+let allSessionsCache = [];
+
+window.copySnippet = function(btn) {
+  const wrapper = btn.closest('.code-block-wrapper');
+  if (!wrapper) return;
+  const codeEl = wrapper.querySelector('pre code');
+  if (!codeEl) return;
+  const code = codeEl.innerText || codeEl.textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✅ Copied!';
+    btn.classList.add('text-emerald-400', 'border-emerald-500/50');
+    setTimeout(() => {
+      btn.innerHTML = orig;
+      btn.classList.remove('text-emerald-400', 'border-emerald-500/50');
+    }, 1500);
+  });
+};
+
+window.copyTurnMessage = function(btn, cardId) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const content = card.querySelector('.prose-chat');
+  const text = content ? (content.innerText || content.textContent) : '';
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✅ Copied';
+    setTimeout(() => { btn.innerHTML = orig; }, 1500);
+  });
+};
+
+function configureMarked() {
+  if (typeof marked === 'undefined') return;
+  const renderer = new marked.Renderer();
+  renderer.code = function(code, lang) {
+    let highlighted;
+    const validLang = lang && typeof hljs !== 'undefined' && hljs.getLanguage(lang) ? lang : '';
+    try {
+      if (typeof hljs !== 'undefined') {
+        highlighted = validLang ? hljs.highlight(code, { language: validLang }).value : hljs.highlightAuto(code).value;
+      } else {
+        highlighted = escapeHtml(code);
+      }
+    } catch {
+      highlighted = escapeHtml(code);
+    }
+    const displayLang = (validLang || lang || 'code').toUpperCase();
+    return `
+      <div class="code-block-wrapper">
+        <div class="code-header">
+          <span>${displayLang}</span>
+          <button type="button" class="code-copy-btn" onclick="copySnippet(this)">📋 Copy</button>
+        </div>
+        <pre><code class="hljs ${validLang ? 'language-' + validLang : ''}">${highlighted}</code></pre>
+      </div>
+    `;
+  };
+
+  marked.setOptions({
+    renderer,
+    breaks: true,
+    gfm: true
+  });
+}
+
 function appendChatMessage(agent, text, turn, diff) {
   const chat = document.getElementById('chatMessages');
   const placeholder = document.getElementById('chatEmptyPlaceholder');
   if (placeholder) placeholder.classList.add('hidden');
 
+  messageCounter++;
+  const cardId = `msg-card-${messageCounter}`;
   const card = document.createElement('div');
+  card.id = cardId;
+
   const isKilo = agent === 'kilo';
   const isCline = agent === 'cline';
   const isHuman = agent === 'human';
 
-  let cardColor = 'bg-slate-900 border-l-2 border-indigo-500';
-  let tagColor = 'text-indigo-400';
-
+  let cardTheme = 'chat-card';
+  let avatarBadge = '';
   if (isKilo) {
-    cardColor = 'chat-card-kilo bg-slate-900';
-    tagColor = 'text-purple-400';
+    cardTheme = 'chat-card chat-card-kilo';
+    avatarBadge = `
+      <div class="flex items-center gap-2">
+        <span class="w-6 h-6 rounded-md bg-purple-950 border border-purple-600/50 flex items-center justify-center text-xs shadow-inner">🟣</span>
+        <span class="font-bold text-xs tracking-wider text-purple-300 font-mono">KILO</span>
+      </div>
+    `;
   } else if (isCline) {
-    cardColor = 'chat-card-cline bg-slate-900';
-    tagColor = 'text-emerald-400';
-  } else if (isHuman) {
-    cardColor = 'chat-card-human bg-slate-900';
-    tagColor = 'text-amber-400';
+    cardTheme = 'chat-card chat-card-cline';
+    avatarBadge = `
+      <div class="flex items-center gap-2">
+        <span class="w-6 h-6 rounded-md bg-emerald-950 border border-emerald-600/50 flex items-center justify-center text-xs shadow-inner">🟢</span>
+        <span class="font-bold text-xs tracking-wider text-emerald-300 font-mono">CLINE</span>
+      </div>
+    `;
+  } else {
+    cardTheme = 'chat-card chat-card-human';
+    avatarBadge = `
+      <div class="flex items-center gap-2">
+        <span class="w-6 h-6 rounded-md bg-amber-950 border border-amber-600/50 flex items-center justify-center text-xs shadow-inner">👤</span>
+        <span class="font-bold text-xs tracking-wider text-amber-300 font-mono">YOU</span>
+      </div>
+    `;
   }
 
-  card.className = `${cardColor} p-3 rounded shadow text-xs space-y-1.5`;
+  card.className = `${cardTheme} p-3.5 rounded-xl shadow-md space-y-2 group transition`;
   card.innerHTML = `
-    <div class="flex items-center justify-between font-mono ${tagColor}">
-      <span class="font-bold">${escapeHtml(agent.toUpperCase())}</span>
-      ${turn ? `<span class="text-slate-500">Turn ${turn}</span>` : ''}
+    <div class="flex items-center justify-between pb-1.5 border-b border-slate-800/60">
+      ${avatarBadge}
+      <div class="flex items-center gap-2">
+        ${turn ? `<span class="px-2 py-0.5 rounded-full bg-slate-800/90 border border-slate-700/80 text-slate-400 text-[10px] font-mono">Turn ${turn}</span>` : ''}
+        <button type="button" onclick="copyTurnMessage(this, '${cardId}')" class="opacity-0 group-hover:opacity-100 px-2 py-0.5 rounded text-[10px] bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/60 transition flex items-center gap-1 cursor-pointer">
+          📋 Copy
+        </button>
+      </div>
     </div>
-    <div class="text-slate-200 leading-relaxed">${formatContent(text)}</div>
+    <div class="text-slate-200">${formatContent(text)}</div>
     ${formatDiff(diff)}
   `;
 
@@ -851,16 +947,37 @@ function formatContent(text) {
       if (parts.length > 0) cleanText = parts.join('\n\n');
     } catch {}
   }
-  let safe = escapeHtml(cleanText);
-  // Code blocks: ```lang ... ```
-  safe = safe.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_m, lang, code) => {
-    return `<div class="my-2 rounded bg-slate-950 border border-slate-800 p-2 font-mono text-[11px] overflow-x-auto"><div class="text-slate-500 text-[10px] mb-1 font-semibold uppercase">${lang || 'code'}</div><pre class="text-emerald-400">${code.trim()}</pre></div>`;
-  });
-  // Inline code: `code`
-  safe = safe.replace(/`([^`]+)`/g, '<code class="bg-slate-950 px-1 py-0.5 rounded text-amber-300 font-mono text-[11px]">$1</code>');
-  // Bold: **text**
-  safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong class="text-slate-100 font-bold">$1</strong>');
-  return `<div class="whitespace-pre-wrap">${safe}</div>`;
+
+  // Extract <thinking> tags if present
+  let thinkingHtml = '';
+  const thinkingMatch = cleanText.match(/<thinking>([\s\S]*?)<\/thinking>/i);
+  if (thinkingMatch) {
+    const rawThinking = thinkingMatch[1].trim();
+    cleanText = cleanText.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+    thinkingHtml = `
+      <details class="thinking-accordion">
+        <summary class="thinking-summary">
+          <span>🧠 Thought Process</span>
+          <span class="text-[10px] text-purple-400 font-mono">click to toggle</span>
+        </summary>
+        <div class="thinking-content">${escapeHtml(rawThinking)}</div>
+      </details>
+    `;
+  }
+
+  // Parse markdown
+  let rendered = '';
+  if (typeof marked !== 'undefined') {
+    try {
+      rendered = marked.parse(cleanText);
+    } catch {
+      rendered = escapeHtml(cleanText);
+    }
+  } else {
+    rendered = escapeHtml(cleanText);
+  }
+
+  return `${thinkingHtml}<div class="prose-chat text-xs leading-relaxed">${rendered}</div>`;
 }
 
 function formatDiff(diff) {
@@ -878,7 +995,17 @@ function formatDiff(diff) {
     }
     return `<span class="text-slate-400">${line}</span>`;
   }).join('\n');
-  return `<details class="mt-2 text-slate-400 font-mono"><summary class="cursor-pointer text-slate-500 hover:text-slate-300">View Git Diff</summary><pre class="bg-slate-950 p-2 rounded mt-1 overflow-x-auto text-[11px]">${colored}</pre></details>`;
+  return `<details class="mt-2 text-slate-400 font-mono"><summary class="cursor-pointer text-slate-500 hover:text-slate-300 text-[11px]">View Git Diff</summary><pre class="bg-slate-950 p-2 rounded mt-1 overflow-x-auto text-[11px] border border-slate-800/80">${colored}</pre></details>`;
+}
+
+function getFileIcon(name) {
+  if (name.endsWith('.test.js') || name.endsWith('.spec.js')) return '🧪';
+  if (name.endsWith('.js') || name.endsWith('.mjs') || name.endsWith('.ts')) return '⚡';
+  if (name.endsWith('.md')) return '📝';
+  if (name.endsWith('.json')) return '⚙️';
+  if (name.endsWith('.html')) return '🌐';
+  if (name.endsWith('.css')) return '🎨';
+  return '📄';
 }
 
 async function refreshFileTree() {
@@ -895,17 +1022,18 @@ function renderTreeNodes(nodes, container) {
   for (const node of nodes) {
     const el = document.createElement('div');
     if (node.type === 'directory') {
-      el.className = 'py-1 px-2 text-xs hover:bg-slate-800 cursor-pointer rounded select-none';
+      el.className = 'py-1 px-2 text-xs hover:bg-slate-800/60 cursor-pointer rounded select-none';
       el.innerHTML = `📁 <span class="font-semibold text-slate-300">${escapeHtml(node.name)}</span>`;
       container.appendChild(el);
       const sub = document.createElement('div');
-      sub.className = 'pl-3';
+      sub.className = 'pl-3 border-l border-slate-800/60 ml-1.5';
       renderTreeNodes(node.children, sub);
       container.appendChild(sub);
     } else {
       const isSelected = selectedFilePath === node.path;
-      el.className = `py-1 px-2 text-xs cursor-pointer rounded select-none file-item transition ${isSelected ? 'bg-slate-800 text-indigo-300 font-medium' : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'}`;
-      el.innerHTML = `📄 <span>${escapeHtml(node.name)}</span>`;
+      const icon = getFileIcon(node.name);
+      el.className = `py-1 px-2 text-xs cursor-pointer rounded-md select-none file-item transition ${isSelected ? 'bg-indigo-950/60 text-indigo-300 font-medium border border-indigo-700/50' : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'}`;
+      el.innerHTML = `${icon} <span>${escapeHtml(node.name)}</span>`;
       el.onclick = () => {
         selectedFilePath = node.path;
         loadFileContent(node.path);
@@ -920,31 +1048,75 @@ async function loadFileContent(filePath) {
   try {
     const res = await fetch(`/api/workspace/file?path=${encodeURIComponent(filePath)}`);
     const content = await res.text();
-    document.getElementById('currentFileTitle').textContent = filePath;
-    document.getElementById('fileContentCode').textContent = content;
+    const titleEl = document.getElementById('currentFileTitle');
+    const copyBtn = document.getElementById('btnCopyCurrentFile');
+    const codeEl = document.getElementById('fileContentCode');
+    if (titleEl) titleEl.textContent = `${getFileIcon(filePath)} ${filePath}`;
+    if (copyBtn) {
+      copyBtn.classList.remove('hidden');
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(content).then(() => {
+          const orig = copyBtn.textContent;
+          copyBtn.textContent = '✅ Copied!';
+          setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+        });
+      };
+    }
+    if (codeEl) codeEl.textContent = content;
   } catch {}
 }
 
 async function loadSessionsList() {
   try {
     const res = await fetch('/api/sessions');
-    const sessions = await res.json();
-    const listContainer = document.getElementById('sessionList');
-    listContainer.innerHTML = '';
-    for (const sess of sessions) {
-      const el = document.createElement('div');
-      el.className = 'p-2 rounded bg-slate-950/60 hover:bg-slate-800 cursor-pointer border border-slate-800 text-xs transition';
-      el.innerHTML = `
-        <div class="font-semibold text-slate-200 truncate">${escapeHtml(sess.topic || sess.id)}</div>
-        <div class="text-[10px] text-slate-500 font-mono mt-0.5 flex justify-between">
-          <span>${sess.turns} turns</span>
-          <span>${new Date(sess.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-        </div>
-      `;
-      el.onclick = () => loadSessionDetails(sess.id);
-      listContainer.appendChild(el);
-    }
+    allSessionsCache = await res.json();
+    renderFilteredSessions();
   } catch {}
+}
+
+function renderFilteredSessions() {
+  const searchInput = document.getElementById('txtSearchSessions');
+  const query = (searchInput ? searchInput.value : '').toLowerCase().trim();
+  const listContainer = document.getElementById('sessionList');
+  if (!listContainer) return;
+  listContainer.innerHTML = '';
+
+  const filtered = allSessionsCache.filter(sess => {
+    if (!query) return true;
+    const topic = (sess.topic || sess.id).toLowerCase();
+    return topic.includes(query);
+  });
+
+  if (filtered.length === 0) {
+    listContainer.innerHTML = `<div class="p-4 text-center text-slate-500 text-xs">No matching sessions</div>`;
+    return;
+  }
+
+  for (const sess of filtered) {
+    const isActive = termManager && termManager.currentSessionId === sess.id;
+    const el = document.createElement('div');
+    el.className = `session-item ${isActive ? 'active' : ''}`;
+
+    const firstAgent = sess.history && sess.history[0] ? sess.history[0].agent : null;
+    const agentBadge = firstAgent === 'kilo' ? '🟣' : (firstAgent === 'cline' ? '🟢' : '⚡');
+
+    el.innerHTML = `
+      <div class="flex items-center justify-between gap-1.5">
+        <span class="font-semibold text-slate-200 truncate flex items-center gap-1.5">
+          <span>${agentBadge}</span>
+          <span class="truncate">${escapeHtml(sess.topic || sess.id)}</span>
+        </span>
+      </div>
+      <div class="text-[10px] text-slate-500 font-mono mt-1 flex justify-between items-center">
+        <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-800 text-slate-400">${sess.turns} turns</span>
+        <span>${new Date(sess.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
+    `;
+    el.onclick = () => {
+      loadSessionDetails(sess.id);
+    };
+    listContainer.appendChild(el);
+  }
 }
 
 function clearChatMessages() {
@@ -987,6 +1159,24 @@ async function loadSessionDetails(sessionId) {
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ action: 'select_session', payload: { sessionId } }));
     }
+    const branchBadge = document.getElementById('headerBranchBadge');
+    if (branchBadge) {
+      if (sess.branch) {
+        branchBadge.textContent = sess.branch;
+        branchBadge.classList.remove('hidden');
+        branchBadge.onclick = () => {
+          navigator.clipboard.writeText(sess.branch).then(() => {
+            const orig = branchBadge.textContent;
+            branchBadge.textContent = '✅ Copied!';
+            setTimeout(() => { branchBadge.textContent = orig; }, 1200);
+          });
+        };
+      } else {
+        branchBadge.classList.add('hidden');
+      }
+    }
+
+    renderFilteredSessions();
     refreshFileTree();
   } catch {}
 }
@@ -1014,9 +1204,9 @@ function switchTab(tab) {
   document.getElementById('panelExplorer').classList.toggle('hidden', tab !== 'explorer');
   document.getElementById('panelTerminal').classList.toggle('hidden', tab !== 'terminal');
 
-  document.getElementById('tabBtnChat').className = tab === 'chat' ? 'px-3 py-1 rounded bg-slate-800 text-white font-medium' : 'px-3 py-1 rounded text-slate-400 hover:text-white';
-  document.getElementById('tabBtnExplorer').className = tab === 'explorer' ? 'px-3 py-1 rounded bg-slate-800 text-white font-medium' : 'px-3 py-1 rounded text-slate-400 hover:text-white';
-  document.getElementById('tabBtnTerminal').className = tab === 'terminal' ? 'px-3 py-1 rounded bg-slate-800 text-white font-medium' : 'px-3 py-1 rounded text-slate-400 hover:text-white';
+  document.getElementById('tabBtnChat').className = tab === 'chat' ? 'px-3 py-1 rounded-md bg-slate-800 text-white font-medium transition' : 'px-3 py-1 rounded-md text-slate-400 hover:text-white transition';
+  document.getElementById('tabBtnExplorer').className = tab === 'explorer' ? 'px-3 py-1 rounded-md bg-slate-800 text-white font-medium transition' : 'px-3 py-1 rounded-md text-slate-400 hover:text-white transition';
+  document.getElementById('tabBtnTerminal').className = tab === 'terminal' ? 'px-3 py-1 rounded-md bg-slate-800 text-white font-medium transition' : 'px-3 py-1 rounded-md text-slate-400 hover:text-white transition';
 
   if (tab === 'terminal') {
     termManager.init();
@@ -1065,6 +1255,14 @@ document.getElementById('btnSendHuman').onclick = () => {
   input.value = '';
 };
 
+// Enter key to send human input
+document.getElementById('txtHumanInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('btnSendHuman').click();
+  }
+});
+
 document.getElementById('btnPause').onclick = () => {
   if (isPaused) {
     ws.send(JSON.stringify({ action: 'resume' }));
@@ -1094,15 +1292,41 @@ if (btnRetryConnect) {
 }
 
 window.onload = async () => {
+  configureMarked();
   termManager.init();
   connectWs();
   loadConfig();
   loadSessionsList();
+
+  // Wire search sessions
+  const searchInput = document.getElementById('txtSearchSessions');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      renderFilteredSessions();
+    });
+  }
+
+  // Wire quick steering chips
+  document.querySelectorAll('.quick-chip').forEach(chip => {
+    chip.onclick = () => {
+      const input = document.getElementById('txtHumanInput');
+      if (input) {
+        input.value = chip.dataset.text || chip.textContent;
+        input.focus();
+      }
+    };
+  });
+
   try {
     const res = await fetch('/api/workspace/branch');
     const data = await res.json();
     if (data && data.branch) {
       termManager.updateBranch(data.branch);
+      const branchBadge = document.getElementById('headerBranchBadge');
+      if (branchBadge) {
+        branchBadge.textContent = data.branch;
+        branchBadge.classList.remove('hidden');
+      }
     }
   } catch {}
 };
