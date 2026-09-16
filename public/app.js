@@ -262,12 +262,16 @@ async function loadSessionDetails(sessionId) {
     const res = await fetch(`/api/sessions/${sessionId}`);
     const sess = await res.json();
     document.getElementById('lblSessionTitle').textContent = sess.topic || sess.id;
+    updateActiveBadge('IDLE', sess.history ? sess.history.length : 0);
     const chat = document.getElementById('chatMessages');
     chat.innerHTML = '';
     if (sess.history) {
       for (const turn of sess.history) {
         appendChatMessage(turn.agent, turn.text, turn.turn, turn.diff);
       }
+    }
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ action: 'select_session', payload: { sessionId } }));
     }
   } catch {}
 }

@@ -52,3 +52,24 @@ test('TurnOrchestrator preserves full prompt without artificial length limitatio
   assert.ok(prompt.length >= 5000);
 });
 
+test('TurnOrchestrator resumes a paused or completed session when human sends message', async () => {
+  const orchestrator = new TurnOrchestrator({ workspaceDir: process.cwd() });
+  orchestrator.session = {
+    id: 'test-sess',
+    topic: 'Resume test',
+    history: [{ turn: 1, agent: 'kilo', text: 'Step 1 complete' }]
+  };
+  orchestrator.state = 'PAUSED';
+  let resumedFired = false;
+  orchestrator.on('resumed', () => { resumedFired = true; });
+
+  let stepTriggered = false;
+  orchestrator.executeTurnStep = async () => { stepTriggered = true; };
+
+  orchestrator.injectHumanMessage('Please continue with step 2', 'broadcast');
+  assert.equal(orchestrator.state, 'RUNNING');
+  assert.equal(resumedFired, true);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(stepTriggered, true);
+});
+

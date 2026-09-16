@@ -121,6 +121,12 @@ export function createServerApp({ port = config.PORT, workspaceDir = config.WORK
           await orchestrator.stop();
         } else if (action === 'human_message') {
           orchestrator.injectHumanMessage(payload.text, payload.mode);
+        } else if (action === 'select_session') {
+          const sessionData = await loadSession(payload.sessionId);
+          if (sessionData) {
+            orchestrator.loadSession(sessionData);
+            broadcast('session_selected', sessionData);
+          }
         } else if (action === 'rollback') {
           await rollbackToCommit(workspaceDir, payload.commitHash);
           broadcast('workspace_rollback', { commitHash: payload.commitHash });

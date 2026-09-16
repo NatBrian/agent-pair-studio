@@ -41,10 +41,25 @@ export class TurnOrchestrator extends EventEmitter {
   injectHumanMessage(text, mode = 'broadcast') {
     if (mode === 'whisper_kilo') {
       this.whisperQueues.kilo.push(text);
+      if (this.state !== 'RUNNING') {
+        this.activeAgent = 'kilo';
+      }
     } else if (mode === 'whisper_cline') {
       this.whisperQueues.cline.push(text);
+      if (this.state !== 'RUNNING') {
+        this.activeAgent = 'cline';
+      }
     } else {
       this.broadcastQueue.push(text);
+    }
+
+    // If there is an existing session and the loop is paused, completed, or idle/stopped,
+    // sending a human message automatically resumes the session to continue from that input.
+    if (this.session && this.state !== 'RUNNING') {
+      this.state = 'RUNNING';
+      this.maxTurns = Math.max(this.maxTurns || config.LOOP_LIMITS.MAX_TURNS, this.currentTurn + config.LOOP_LIMITS.MAX_TURNS);
+      this.emit('resumed');
+      setImmediate(() => this.executeTurnStep());
     }
   }
 
@@ -82,19 +97,27 @@ export class TurnOrchestrator extends EventEmitter {
     this.activeAgent = 'kilo';
     this.state = 'RUNNING';
 
+    // Protocol instructions so agents know how to hand off and conclude
+    const protocolText = `Pair-programming protocol:
+- Coordinate tasks and architectural decisions in BLACKBOARD.md.
+- When the objective is completely achieved, include <TASK_COMPLETE> in your final message to conclude and stop the session.
+- If you hit ambiguity or require human guidance, include <NEED_HUMAN question="..."> to pause for human input.
+- Otherwise, summarize your step and pass to your peer.`;
+
     // Kickoff prompt
     let kickoff;
     if (isIdeation) {
-      kickoff = `[Human Overseer]: You and your colleague Cline are an equal pair-programming team. Invent a creative coding tool or challenge, outline your plan in BLACKBOARD.md, implement the initial scaffold, and pass to Cline.`;
+      kickoff = `[Human Overseer]: You and your colleague Cline are an equal pair-programming team. Invent a creative coding tool or challenge, outline your plan in BLACKBOARD.md, implement the initial scaffold, and pass to Cline.\n\n${protocolText}`;
     } else {
-      kickoff = `[Human Overseer]: You and your colleague Cline are an equal pair-programming team. Task: "${this.session.topic}". Review the workspace, coordinate in BLACKBOARD.md, implement the first step, and pass to Cline.`;
+      kickoff = `[Human Overseer]: You and your colleague Cline are an equal pair-programming team. Task: "${this.session.topic}". Review the workspace, coordinate in BLACKBOARD.md, implement the first step, and pass to Cline.\n\n${protocolText}`;
     }
 
     return this.executeTurnStep(kickoff);
   }
 
   async executeTurnStep(overridePrompt = null) {
-    if (this.currentTurn >= config.LOOP_LIMITS.MAX_TURNS) {
+    const maxAllowed = this.maxTurns || config.LOOP_LIMITS.MAX_TURNS;
+    if (this.currentTurn >= maxAllowed) {
       this.state = 'COMPLETED';
       this.emit('completed', { reason: 'max_turns_reached' });
       return;
@@ -211,5 +234,16 @@ export class TurnOrchestrator extends EventEmitter {
       this.emit('resumed');
       this.executeTurnStep();
     }
+  }
+
+  loadSession(sessionData) {
+    this.session = sessionData;
+    this.currentTurn = sessionData.history ? sessionData.history.length : 0;
+    this.maxTurns = this.currentTurn + config.LOOP_LIMITS.MAX_TURNS;
+    this.activeAgent = (sessionData.history && sessionData.history.length > 0)
+      ? (sessionData.history[sessionData.history.length - 1].agent === 'kilo' ? 'cline' : 'kilo')
+      : 'kilo';
+    this.state = 'IDLE';
+    this.emit('session_loaded', sessionData);
   }
 }
