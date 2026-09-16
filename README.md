@@ -1,4 +1,4 @@
-# 🐙 Agent Pair Studio (Kilo CLI & Cline CLI)
+# ⚡ Agent Pair Studio (Kilo CLI & Cline CLI)
 
 An autonomous pair-programming and collaborative execution harness between **Kilo CLI** and **Cline CLI** on Windows, featuring strict sandbox containment, equal peer hierarchy, dual-layer memory, Git time-machine checkpoints, and a live multi-tab web dashboard.
 
@@ -144,7 +144,7 @@ npm start
 
 You will see the console confirmation:
 ```
-🐙 Agent Pair Studio is running on http://localhost:3000
+⚡ Agent Pair Studio is running on http://localhost:3000
    Workspace: C:\Users\Admin\Documents\Github\agent-pair-studio\kilo-cline-workspace
    Port: 3000
 ```
