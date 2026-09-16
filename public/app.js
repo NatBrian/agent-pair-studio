@@ -1,19 +1,481 @@
 let ws;
-let terminal;
 let activeTab = 'chat';
 
-function initTerminal() {
-  const container = document.getElementById('xtermContainer');
-  if (!container) return;
-  terminal = new Terminal({
-    theme: { background: '#020617', foreground: '#cbd5e1' },
-    fontFamily: 'Consolas, monospace',
-    fontSize: 12,
-    convertEol: true
-  });
-  terminal.open(container);
-  terminal.writeln('\x1b[35m🐙 Agent Collab Studio Terminal Ready.\x1b[0m');
+class TerminalManager {
+  constructor() {
+    this.mode = 'pretty'; // 'pretty' | 'raw'
+    this.filter = 'all'; // 'all' | 'kilo' | 'cline' | 'errors'
+    this.autoScroll = true;
+    this.mainTerminal = null;
+    this.drawerTerminal = null;
+    this.sessionLogs = new Map(); // sessionId -> Array<{ raw: string, pretty: string, agent?: string, isError?: boolean, userCommand?: boolean }>
+    this.currentSessionId = 'live';
+    this.currentBranch = 'master';
+    this.commandHistory = [];
+    this.historyIndex = -1;
+  }
+
+  init() {
+    const mainContainer = document.getElementById('xtermContainer');
+    if (mainContainer && !this.mainTerminal) {
+      this.mainTerminal = new Terminal({
+        theme: {
+          background: '#020617',
+          foreground: '#cbd5e1',
+          cursor: '#60a5fa',
+          selectionBackground: '#334155'
+        },
+        fontFamily: 'Consolas, "Fira Code", monospace',
+        fontSize: 12,
+        convertEol: true,
+        scrollback: 5000
+      });
+      this.mainTerminal.open(mainContainer);
+      this.mainTerminal.writeln('\x1b[1;35m🐙 Agent Collab Studio Live Terminal Ready.\x1b[0m');
+      this.mainTerminal.writeln('\x1b[90mTip: Toggle Formatted/Raw or run workspace commands directly below.\x1b[0m\r\n');
+
+      this.mainTerminal.onScroll(() => {
+        const buffer = this.mainTerminal.buffer.active;
+        const isAtBottom = buffer.viewportY >= buffer.baseY - 1;
+        this.updateAutoScrollState(isAtBottom);
+      });
+    }
+
+    this.bindControls();
+  }
+
+  initDrawer() {
+    const drawerContainer = document.getElementById('drawerXtermContainer');
+    if (drawerContainer && !this.drawerTerminal) {
+      this.drawerTerminal = new Terminal({
+        theme: {
+          background: '#020617',
+          foreground: '#cbd5e1',
+          cursor: '#60a5fa'
+        },
+        fontFamily: 'Consolas, "Fira Code", monospace',
+        fontSize: 11,
+        convertEol: true,
+        scrollback: 2000
+      });
+      this.drawerTerminal.open(drawerContainer);
+      this.drawerTerminal.writeln('\x1b[1;35m⚡ Split Console Active.\x1b[0m\r\n');
+    }
+  }
+
+  bindControls() {
+    // Mode toggles
+    const btnPretty = document.getElementById('btnTermModePretty');
+    const btnRaw = document.getElementById('btnTermModeRaw');
+    if (btnPretty && btnRaw) {
+      btnPretty.onclick = () => this.setMode('pretty');
+      btnRaw.onclick = () => this.setMode('raw');
+    }
+
+    // Filter pills
+    const filterBtns = document.querySelectorAll('.term-filter-btn');
+    filterBtns.forEach((btn) => {
+      btn.onclick = () => {
+        const f = btn.getAttribute('data-filter') || 'all';
+        this.setFilter(f);
+      };
+    });
+
+    // Auto-scroll toggle
+    const btnAuto = document.getElementById('btnAutoScroll');
+    if (btnAuto) {
+      btnAuto.onclick = () => {
+        this.autoScroll = !this.autoScroll;
+        this.updateAutoScrollUI();
+        if (this.autoScroll && this.mainTerminal) {
+          this.mainTerminal.scrollToBottom();
+          const jumpBtn = document.getElementById('btnJumpBottom');
+          if (jumpBtn) jumpBtn.classList.add('hidden');
+        }
+      };
+    }
+
+    // Jump to bottom button
+    const btnJump = document.getElementById('btnJumpBottom');
+    if (btnJump) {
+      btnJump.onclick = () => {
+        this.autoScroll = true;
+        this.updateAutoScrollUI();
+        if (this.mainTerminal) {
+          this.mainTerminal.scrollToBottom();
+          btnJump.classList.add('hidden');
+        }
+      };
+    }
+
+    // Clear
+    const btnClear = document.getElementById('btnClearTerminal');
+    if (btnClear) {
+      btnClear.onclick = () => {
+        if (this.mainTerminal) this.mainTerminal.clear();
+        if (this.drawerTerminal) this.drawerTerminal.clear();
+      };
+    }
+
+    // Copy
+    const btnCopy = document.getElementById('btnCopyTerminal');
+    if (btnCopy) {
+      btnCopy.onclick = () => this.copyToClipboard(btnCopy);
+    }
+
+    // Export
+    const btnExport = document.getElementById('btnExportTerminal');
+    if (btnExport) {
+      btnExport.onclick = () => this.exportLog();
+    }
+
+    // Command runner
+    const cmdInput = document.getElementById('termCommandInput');
+    const btnRunCmd = document.getElementById('btnRunTerminalCmd');
+    if (cmdInput && btnRunCmd) {
+      btnRunCmd.onclick = () => this.submitCommand(cmdInput);
+      cmdInput.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          this.submitCommand(cmdInput);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (this.commandHistory.length > 0) {
+            if (this.historyIndex === -1) {
+              this.historyIndex = this.commandHistory.length - 1;
+            } else if (this.historyIndex > 0) {
+              this.historyIndex--;
+            }
+            cmdInput.value = this.commandHistory[this.historyIndex];
+          }
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (this.historyIndex !== -1) {
+            if (this.historyIndex < this.commandHistory.length - 1) {
+              this.historyIndex++;
+              cmdInput.value = this.commandHistory[this.historyIndex];
+            } else {
+              this.historyIndex = -1;
+              cmdInput.value = '';
+            }
+          }
+        }
+      };
+    }
+
+    // Chat live console drawer
+    const btnToggleConsole = document.getElementById('btnToggleLiveConsole');
+    const drawer = document.getElementById('chatConsoleDrawer');
+    const btnCloseDrawer = document.getElementById('btnCloseConsoleDrawer');
+    const btnExpandTab = document.getElementById('btnExpandTerminalTab');
+
+    if (btnToggleConsole && drawer) {
+      btnToggleConsole.onclick = () => {
+        const isHidden = drawer.classList.contains('hidden');
+        drawer.classList.toggle('hidden', !isHidden);
+        btnToggleConsole.className = isHidden
+          ? 'px-2.5 py-1.5 rounded bg-slate-800 text-amber-300 border border-amber-500/50 text-xs flex items-center gap-1.5 transition font-medium shadow-sm'
+          : 'px-2.5 py-1.5 rounded bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs flex items-center gap-1.5 transition font-medium';
+        if (isHidden) {
+          this.initDrawer();
+        }
+      };
+    }
+
+    if (btnCloseDrawer && drawer && btnToggleConsole) {
+      btnCloseDrawer.onclick = () => {
+        drawer.classList.add('hidden');
+        btnToggleConsole.className = 'px-2.5 py-1.5 rounded bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs flex items-center gap-1.5 transition font-medium';
+      };
+    }
+
+    if (btnExpandTab) {
+      btnExpandTab.onclick = () => {
+        if (drawer) drawer.classList.add('hidden');
+        if (btnToggleConsole) {
+          btnToggleConsole.className = 'px-2.5 py-1.5 rounded bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs flex items-center gap-1.5 transition font-medium';
+        }
+        switchTab('terminal');
+      };
+    }
+  }
+
+  setMode(mode) {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    const btnPretty = document.getElementById('btnTermModePretty');
+    const btnRaw = document.getElementById('btnTermModeRaw');
+    if (btnPretty && btnRaw) {
+      btnPretty.className = mode === 'pretty'
+        ? 'px-2 py-0.5 rounded bg-indigo-600 text-white font-medium transition'
+        : 'px-2 py-0.5 rounded text-slate-400 hover:text-white transition';
+      btnRaw.className = mode === 'raw'
+        ? 'px-2 py-0.5 rounded bg-indigo-600 text-white font-medium transition'
+        : 'px-2 py-0.5 rounded text-slate-400 hover:text-white transition';
+    }
+    this.replayCurrentSession();
+  }
+
+  setFilter(filter) {
+    this.filter = filter;
+    document.querySelectorAll('.term-filter-btn').forEach((btn) => {
+      const f = btn.getAttribute('data-filter');
+      const isSelected = f === filter;
+      if (f === 'all') {
+        btn.className = isSelected
+          ? 'term-filter-btn px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-medium'
+          : 'term-filter-btn px-2 py-0.5 rounded text-slate-400 hover:bg-slate-800 transition';
+      } else if (f === 'kilo') {
+        btn.className = isSelected
+          ? 'term-filter-btn px-2 py-0.5 rounded bg-purple-900/60 text-purple-200 border border-purple-700 font-medium'
+          : 'term-filter-btn px-2 py-0.5 rounded text-purple-400 hover:bg-slate-800 transition';
+      } else if (f === 'cline') {
+        btn.className = isSelected
+          ? 'term-filter-btn px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-200 border border-emerald-700 font-medium'
+          : 'term-filter-btn px-2 py-0.5 rounded text-emerald-400 hover:bg-slate-800 transition';
+      } else if (f === 'errors') {
+        btn.className = isSelected
+          ? 'term-filter-btn px-2 py-0.5 rounded bg-rose-900/60 text-rose-200 border border-rose-700 font-medium'
+          : 'term-filter-btn px-2 py-0.5 rounded text-rose-400 hover:bg-slate-800 transition';
+      }
+    });
+    this.replayCurrentSession();
+  }
+
+  updateAutoScrollState(isAtBottom) {
+    const jumpBtn = document.getElementById('btnJumpBottom');
+    if (!isAtBottom) {
+      this.autoScroll = false;
+      this.updateAutoScrollUI();
+      if (jumpBtn) jumpBtn.classList.remove('hidden');
+    } else {
+      this.autoScroll = true;
+      this.updateAutoScrollUI();
+      if (jumpBtn) jumpBtn.classList.add('hidden');
+    }
+  }
+
+  updateAutoScrollUI() {
+    const dot = document.getElementById('autoScrollDot');
+    const text = document.getElementById('autoScrollText');
+    if (dot && text) {
+      if (this.autoScroll) {
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+        text.textContent = 'Auto-Scroll: ON';
+      } else {
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-400';
+        text.textContent = 'Auto-Scroll: PAUSED';
+      }
+    }
+  }
+
+  submitCommand(inputEl) {
+    const cmd = inputEl.value.trim();
+    if (!cmd) return;
+    this.commandHistory.push(cmd);
+    this.historyIndex = -1;
+    inputEl.value = '';
+
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({
+        action: 'terminal_input',
+        payload: { command: cmd }
+      }));
+    }
+  }
+
+  copyToClipboard(btnEl) {
+    if (!this.mainTerminal) return;
+    let fullText = '';
+    const buf = this.mainTerminal.buffer.active;
+    for (let i = 0; i < buf.length; i++) {
+      fullText += buf.getLine(i).translateToString(true) + '\n';
+    }
+    navigator.clipboard.writeText(fullText.trimEnd()).then(() => {
+      const orig = btnEl.textContent;
+      btnEl.textContent = '✅ Copied!';
+      setTimeout(() => { btnEl.textContent = orig; }, 1500);
+    });
+  }
+
+  exportLog() {
+    if (!this.mainTerminal) return;
+    let fullText = '';
+    const buf = this.mainTerminal.buffer.active;
+    for (let i = 0; i < buf.length; i++) {
+      fullText += buf.getLine(i).translateToString(true) + '\n';
+    }
+    const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `terminal-${this.currentSessionId || 'session'}.log`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  updateBranch(branch) {
+    this.currentBranch = branch || 'master';
+    const badge = document.getElementById('termCurrentBranch');
+    if (badge) badge.textContent = this.currentBranch;
+  }
+
+  switchSession(sessionId, branch) {
+    this.currentSessionId = sessionId;
+    if (branch) this.updateBranch(branch);
+    this.replayCurrentSession();
+  }
+
+  replayCurrentSession() {
+    if (!this.mainTerminal) return;
+    this.mainTerminal.clear();
+    if (this.drawerTerminal) this.drawerTerminal.clear();
+
+    const logs = this.sessionLogs.get(this.currentSessionId) || [];
+    for (const item of logs) {
+      if (!this.shouldShow(item)) continue;
+      const text = this.mode === 'pretty' ? item.pretty : item.raw;
+      if (text) {
+        this.writeDirect(text);
+      }
+    }
+  }
+
+  shouldShow(item) {
+    if (this.filter === 'all') return true;
+    if (this.filter === 'errors') return !!item.isError;
+    if (this.filter === 'kilo') return item.agent === 'kilo' || item.userCommand;
+    if (this.filter === 'cline') return item.agent === 'cline' || item.userCommand;
+    return true;
+  }
+
+  writeDirect(text) {
+    if (this.mainTerminal) {
+      this.mainTerminal.write(text);
+      if (this.autoScroll) this.mainTerminal.scrollToBottom();
+    }
+    if (this.drawerTerminal) {
+      this.drawerTerminal.write(text);
+      this.drawerTerminal.scrollToBottom();
+    }
+  }
+
+  handleChunk(payload) {
+    const raw = payload.chunk || '';
+    const agent = payload.agent || (payload.userCommand ? 'human' : null);
+    const isError = !!(payload.isStderr || payload.error || /error|failed|exception/i.test(raw));
+    const userCommand = !!payload.userCommand;
+
+    let pretty = raw;
+    if (!userCommand) {
+      pretty = this.formatChunk(raw, agent);
+    }
+
+    const item = { raw, pretty, agent, isError, userCommand };
+
+    const key = this.currentSessionId || 'live';
+    if (!this.sessionLogs.has(key)) {
+      this.sessionLogs.set(key, []);
+    }
+    this.sessionLogs.get(key).push(item);
+
+    if (this.shouldShow(item)) {
+      const out = this.mode === 'pretty' ? pretty : raw;
+      this.writeDirect(out);
+    }
+  }
+
+  formatChunk(raw, agent) {
+    if (!raw.includes('{"') && !raw.includes('{"type"')) {
+      return raw;
+    }
+
+    const lines = raw.split(/\r?\n/);
+    const formatted = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        formatted.push('');
+        continue;
+      }
+      if (!trimmed.startsWith('{')) {
+        formatted.push(line);
+        continue;
+      }
+
+      try {
+        const obj = JSON.parse(trimmed);
+        const lineText = this.formatJsonObject(obj, agent);
+        if (lineText) formatted.push(lineText);
+      } catch {
+        formatted.push(line);
+      }
+    }
+
+    return formatted.join('\r\n');
+  }
+
+  formatJsonObject(obj, agent) {
+    const agentTag = agent
+      ? (agent === 'cline' ? '\x1b[1;32m[CLINE]\x1b[0m ' : '\x1b[1;35m[KILO]\x1b[0m ')
+      : '';
+
+    // 1. Tool use in Kilo format
+    if (obj.type === 'tool_use' || obj.part?.type === 'tool') {
+      const tool = obj.part?.tool || obj.tool || 'command';
+      const input = obj.part?.state?.input || obj.input || {};
+      const desc = input.command || input.filePath || input.description || JSON.stringify(input);
+      return `${agentTag}\x1b[1;33m⚡ Tool Call [${tool}]:\x1b[0m \x1b[36m${desc}\x1b[0m`;
+    }
+
+    // 2. Tool result / state output
+    if (obj.part?.state?.output) {
+      const out = String(obj.part.state.output).trim();
+      return `\x1b[90m┌─ Output:\x1b[0m\r\n\x1b[37m${out}\x1b[0m\r\n\x1b[90m└─────────\x1b[0m`;
+    }
+
+    // 3. Step start / finish
+    if (obj.type === 'step_start' || obj.part?.type === 'step-start') {
+      return `${agentTag}\x1b[90m▶ Turn Step Started\x1b[0m`;
+    }
+    if (obj.type === 'step_finish' || obj.part?.type === 'step-finish') {
+      const reason = obj.part?.reason || 'complete';
+      return `${agentTag}\x1b[90m✔ Step Finished (${reason})\x1b[0m`;
+    }
+
+    // 4. Cline agent_event
+    if (obj.type === 'agent_event' && obj.event) {
+      const ev = obj.event;
+      if (ev.type === 'iteration_start') {
+        return `${agentTag}\x1b[90m▶ Iteration ${ev.iteration}\x1b[0m`;
+      }
+      if (ev.type === 'content_start' && ev.contentType === 'tool') {
+        const cmd = ev.input?.commands ? ev.input.commands.join(' && ') : (ev.toolName || 'tool');
+        return `${agentTag}\x1b[1;33m⚡ Tool Call [${ev.toolName}]:\x1b[0m \x1b[36m${cmd}\x1b[0m`;
+      }
+      if (ev.type === 'content_update' && ev.update?.chunk) {
+        return `\x1b[37m${ev.update.chunk}\x1b[0m`;
+      }
+      if (ev.type === 'content_start' && ev.contentType === 'reasoning') {
+        return `${agentTag}\x1b[38;5;141m🧠 Thinking:\x1b[0m \x1b[38;5;244m${ev.reasoning || ''}\x1b[0m`;
+      }
+      if (ev.type === 'content_start' && ev.contentType === 'text') {
+        return `\x1b[97m${ev.text || ''}\x1b[0m`;
+      }
+    }
+
+    // 5. General text part
+    if (obj.type === 'text' && obj.part?.text) {
+      return `\x1b[97m${obj.part.text.trim()}\x1b[0m`;
+    }
+
+    return '';
+  }
 }
+
+const termManager = new TerminalManager();
 
 let isPaused = false;
 let reconnectTimer = null;
@@ -99,8 +561,14 @@ function connectWs() {
       const summary = extractEventSummary(payload.event);
       if (summary) updateLiveTurnStatus(summary);
     } else if (type === 'terminal_output') {
-      if (terminal) terminal.write(payload.chunk);
+      termManager.handleChunk(payload);
       updateLiveTurnSnippet(payload.chunk);
+    } else if (type === 'session_selected') {
+      if (payload.currentBranch) termManager.updateBranch(payload.currentBranch);
+      refreshFileTree();
+    } else if (type === 'workspace_files_updated') {
+      refreshFileTree();
+      if (payload.branch) termManager.updateBranch(payload.branch);
     } else if (type === 'turn_end') {
       hideLiveTurnCard();
       updateWaitingBadge(null);
@@ -505,6 +973,8 @@ async function loadSessionDetails(sessionId) {
     hideLiveTurnCard();
     hideSessionBanner();
 
+    termManager.switchSession(sessionId, sess.branch);
+
     clearChatMessages();
 
     if (sess.history && sess.history.length > 0) {
@@ -517,6 +987,7 @@ async function loadSessionDetails(sessionId) {
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ action: 'select_session', payload: { sessionId } }));
     }
+    refreshFileTree();
   } catch {}
 }
 
@@ -546,6 +1017,15 @@ function switchTab(tab) {
   document.getElementById('tabBtnChat').className = tab === 'chat' ? 'px-3 py-1 rounded bg-slate-800 text-white font-medium' : 'px-3 py-1 rounded text-slate-400 hover:text-white';
   document.getElementById('tabBtnExplorer').className = tab === 'explorer' ? 'px-3 py-1 rounded bg-slate-800 text-white font-medium' : 'px-3 py-1 rounded text-slate-400 hover:text-white';
   document.getElementById('tabBtnTerminal').className = tab === 'terminal' ? 'px-3 py-1 rounded bg-slate-800 text-white font-medium' : 'px-3 py-1 rounded text-slate-400 hover:text-white';
+
+  if (tab === 'terminal') {
+    termManager.init();
+    if (termManager.mainFitAddon) {
+      setTimeout(() => {
+        try { termManager.mainFitAddon.fit(); } catch {}
+      }, 50);
+    }
+  }
 }
 
 // Modal handling
@@ -613,9 +1093,16 @@ if (btnRetryConnect) {
   };
 }
 
-window.onload = () => {
-  initTerminal();
+window.onload = async () => {
+  termManager.init();
   connectWs();
   loadConfig();
   loadSessionsList();
+  try {
+    const res = await fetch('/api/workspace/branch');
+    const data = await res.json();
+    if (data && data.branch) {
+      termManager.updateBranch(data.branch);
+    }
+  } catch {}
 };

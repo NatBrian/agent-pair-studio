@@ -4,10 +4,11 @@ import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import { resolve } from 'node:path';
 import { readdir, readFile, stat } from 'node:fs/promises';
+import { exec } from 'node:child_process';
 import { config } from './config.js';
 import { listSessions, loadSession, saveSession } from './storage/session-store.js';
 import { TurnOrchestrator } from './orchestrator/turn-orchestrator.js';
-import { rollbackToCommit } from './git/checkpoint-engine.js';
+import { rollbackToCommit, checkoutSessionBranch, getCurrentBranch } from './git/checkpoint-engine.js';
 
 export function createServerApp({ port = config.PORT, workspaceDir = config.WORKSPACE_DIR } = {}) {
   const app = express();
@@ -107,6 +108,15 @@ export function createServerApp({ port = config.PORT, workspaceDir = config.WORK
     }
   });
 
+  app.get('/api/workspace/branch', async (req, res) => {
+    try {
+      const branch = await getCurrentBranch(workspaceDir);
+      res.json({ branch });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   wss.on('connection', (ws) => {
     ws.on('message', async (message) => {
       try {
@@ -124,8 +134,41 @@ export function createServerApp({ port = config.PORT, workspaceDir = config.WORK
         } else if (action === 'select_session') {
           const sessionData = await loadSession(payload.sessionId);
           if (sessionData) {
+            if (sessionData.branch) {
+              await checkoutSessionBranch(workspaceDir, sessionData.branch);
+            }
             orchestrator.loadSession(sessionData);
-            broadcast('session_selected', sessionData);
+            const currentBranch = await getCurrentBranch(workspaceDir);
+            broadcast('session_selected', { ...sessionData, currentBranch });
+            broadcast('workspace_files_updated', { branch: currentBranch });
+          }
+        } else if (action === 'terminal_input') {
+          const rawCmd = (payload.command || '').trim();
+          if (rawCmd) {
+            broadcast('terminal_output', {
+              userCommand: true,
+              command: rawCmd,
+              chunk: `\r\n\x1b[1;32m$ ${rawCmd}\x1b[0m\r\n`
+            });
+            try {
+              const child = exec(rawCmd, { cwd: workspaceDir, env: { ...process.env, FORCE_COLOR: '1' }, timeout: 30000 });
+              child.stdout?.on('data', (data) => {
+                broadcast('terminal_output', { chunk: data.toString(), isStdout: true });
+              });
+              child.stderr?.on('data', (data) => {
+                broadcast('terminal_output', { chunk: `\x1b[31m${data.toString()}\x1b[0m`, isStderr: true });
+              });
+              child.on('close', async (code) => {
+                const currentBranch = await getCurrentBranch(workspaceDir);
+                broadcast('terminal_output', {
+                  chunk: `\r\n\x1b[90m[exit code ${code ?? 0}]\x1b[0m\r\n`,
+                  exitCode: code ?? 0
+                });
+                broadcast('workspace_files_updated', { branch: currentBranch });
+              });
+            } catch (cmdErr) {
+              broadcast('terminal_output', { chunk: `\r\n\x1b[1;31mError: ${cmdErr.message}\x1b[0m\r\n` });
+            }
           }
         } else if (action === 'rollback') {
           await rollbackToCommit(workspaceDir, payload.commitHash);

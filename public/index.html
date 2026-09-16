@@ -47,6 +47,9 @@
           <button id="tabBtnExplorer" class="px-3 py-1 rounded text-slate-400 hover:text-white">Workspace Explorer</button>
           <button id="tabBtnTerminal" class="px-3 py-1 rounded text-slate-400 hover:text-white">Live Terminal</button>
         </nav>
+        <button id="btnToggleLiveConsole" class="px-2.5 py-1.5 rounded bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs flex items-center gap-1.5 transition font-medium" title="Toggle split-screen live console in chat view">
+          <span class="text-amber-400">⚡</span> Live Console
+        </button>
         <!-- Controls -->
         <div class="flex items-center gap-1.5">
           <button id="btnPause" class="bg-amber-600 hover:bg-amber-500 text-xs px-3 py-1.5 rounded font-medium transition" title="Pause turn progression gracefully between turns">Pause</button>
@@ -109,8 +112,25 @@
             </div>
           </div>
         </div>
+        <!-- Split Live Console Drawer in Chat -->
+        <div id="chatConsoleDrawer" class="hidden h-56 bg-slate-950 border border-slate-800 rounded-t mt-2 flex flex-col shadow-2xl overflow-hidden transition-all">
+          <div class="h-7 bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between text-[11px] select-none">
+            <div class="flex items-center gap-2 text-slate-300 font-mono">
+              <span class="text-amber-400 animate-pulse">⚡</span>
+              <span class="font-bold">LIVE CONSOLE STREAM</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <button id="btnExpandTerminalTab" class="text-slate-400 hover:text-indigo-400 transition" title="Go to full terminal tab">⤢ Full Terminal</button>
+              <button id="btnCloseConsoleDrawer" class="text-slate-400 hover:text-white font-bold transition" title="Close drawer">✕</button>
+            </div>
+          </div>
+          <div class="flex-1 bg-black p-1.5 overflow-hidden">
+            <div id="drawerXtermContainer" class="h-full w-full"></div>
+          </div>
+        </div>
+
         <!-- Input & Whisper Box -->
-        <div class="mt-3 bg-slate-900 border border-slate-800 rounded p-2 flex gap-2 items-center">
+        <div class="mt-2 bg-slate-900 border border-slate-800 rounded p-2 flex gap-2 items-center">
           <select id="selInterventionMode" class="bg-slate-950 border border-slate-800 text-xs rounded px-2 py-1.5 text-slate-300">
             <option value="broadcast">📢 Broadcast to Both</option>
             <option value="whisper_kilo">🤫 Whisper to Kilo</option>
@@ -131,8 +151,58 @@
       </div>
 
       <!-- Tab 3: Terminal -->
-      <div id="panelTerminal" class="h-full hidden p-2 bg-black">
-        <div id="xtermContainer" class="h-full w-full"></div>
+      <div id="panelTerminal" class="h-full hidden flex flex-col bg-slate-950">
+        <!-- Terminal Top Toolbar -->
+        <div class="h-10 bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between text-xs select-none">
+          <div class="flex items-center gap-2">
+            <span class="font-mono font-bold text-slate-300 flex items-center gap-1.5">
+              <span class="text-indigo-400">💻</span> LIVE TERMINAL
+            </span>
+            <div class="h-3 w-px bg-slate-800 mx-1"></div>
+            <!-- Mode Toggle -->
+            <div class="flex bg-slate-950 p-0.5 rounded border border-slate-800 text-[11px]">
+              <button id="btnTermModePretty" class="px-2 py-0.5 rounded bg-indigo-600 text-white font-medium transition">🎨 Formatted</button>
+              <button id="btnTermModeRaw" class="px-2 py-0.5 rounded text-slate-400 hover:text-white transition">📄 Raw NDJSON</button>
+            </div>
+            <div class="h-3 w-px bg-slate-800 mx-1"></div>
+            <!-- Agent Filter Pills -->
+            <div class="flex items-center gap-1 text-[11px]">
+              <button id="filterBtnAll" data-filter="all" class="term-filter-btn px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-medium">All</button>
+              <button id="filterBtnKilo" data-filter="kilo" class="term-filter-btn px-2 py-0.5 rounded text-purple-400 hover:bg-slate-800 transition">🟣 Kilo</button>
+              <button id="filterBtnCline" data-filter="cline" class="term-filter-btn px-2 py-0.5 rounded text-emerald-400 hover:bg-slate-800 transition">🟢 Cline</button>
+              <button id="filterBtnErrors" data-filter="errors" class="term-filter-btn px-2 py-0.5 rounded text-rose-400 hover:bg-slate-800 transition">⚠️ Errors</button>
+            </div>
+          </div>
+          <!-- Right Controls -->
+          <div class="flex items-center gap-1.5">
+            <button id="btnAutoScroll" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-mono border border-slate-700 flex items-center gap-1 transition" title="Toggle Auto-scroll lock">
+              <span id="autoScrollDot" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span id="autoScrollText">Auto-Scroll: ON</span>
+            </button>
+            <button id="btnClearTerminal" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] border border-slate-700 transition" title="Clear terminal screen">🧹 Clear</button>
+            <button id="btnCopyTerminal" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] border border-slate-700 transition" title="Copy output to clipboard">📋 Copy</button>
+            <button id="btnExportTerminal" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] border border-slate-700 transition" title="Download console log">💾 Download</button>
+          </div>
+        </div>
+
+        <!-- Terminal Container & Jump To Bottom Floating Button -->
+        <div class="flex-1 relative bg-black p-2 overflow-hidden">
+          <div id="xtermContainer" class="h-full w-full"></div>
+          <button id="btnJumpBottom" class="hidden absolute bottom-4 right-6 bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-1.5 rounded-full shadow-lg border border-indigo-400 flex items-center gap-1.5 animate-bounce z-10 font-medium">
+            <span>⬇️</span> Jump to Latest Output
+          </button>
+        </div>
+
+        <!-- Interactive Terminal Prompt at bottom -->
+        <div class="bg-slate-900 border-t border-slate-800 p-2 flex items-center gap-2">
+          <span class="px-2 py-1 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-400 select-none whitespace-nowrap">
+            workspace: <span id="termCurrentBranch" class="text-slate-300">master</span> $
+          </span>
+          <input id="termCommandInput" type="text" placeholder="Run command in workspace (e.g. git status, node random-number.js 1 30)..." class="flex-1 bg-slate-950 border border-slate-800 text-xs rounded px-3 py-1.5 text-white font-mono focus:outline-none focus:border-indigo-500" />
+          <button id="btnRunTerminalCmd" class="bg-emerald-600 hover:bg-emerald-500 text-xs px-3 py-1.5 rounded font-medium text-white transition flex items-center gap-1">
+            <span>▶</span> Run
+          </button>
+        </div>
       </div>
     </section>
   </main>

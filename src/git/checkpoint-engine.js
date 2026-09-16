@@ -31,6 +31,32 @@ export async function createSessionBranch(workspacePath, sessionId, slug = 'coll
   return branchName;
 }
 
+export async function checkoutSessionBranch(workspacePath, branchName) {
+  if (!branchName) return false;
+  try {
+    await execFileAsync('git', ['checkout', branchName], { cwd: workspacePath });
+    return true;
+  } catch (err) {
+    try {
+      await execFileAsync('git', ['stash'], { cwd: workspacePath });
+      await execFileAsync('git', ['checkout', branchName], { cwd: workspacePath });
+      return true;
+    } catch (fallbackErr) {
+      console.warn(`Failed to checkout branch ${branchName}:`, fallbackErr.message);
+      return false;
+    }
+  }
+}
+
+export async function getCurrentBranch(workspacePath) {
+  try {
+    const { stdout } = await execFileAsync('git', ['branch', '--show-current'], { cwd: workspacePath });
+    return stdout.trim();
+  } catch {
+    return '';
+  }
+}
+
 export async function commitTurn(workspacePath, turnNum, agent, summary = 'turn update') {
   const cleanSummary = summary.replace(/["\r\n]/g, ' ').slice(0, 80);
   const commitMsg = `[Turn ${turnNum}] ${agent}: ${cleanSummary}`;

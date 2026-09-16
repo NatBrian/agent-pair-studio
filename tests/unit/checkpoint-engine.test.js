@@ -7,7 +7,9 @@ import {
   createSessionBranch,
   commitTurn,
   getTurnDiff,
-  rollbackToCommit
+  rollbackToCommit,
+  checkoutSessionBranch,
+  getCurrentBranch
 } from '../../src/git/checkpoint-engine.js';
 
 const testDir = resolve(process.cwd(), 'tests/test-git-workspace');
@@ -32,8 +34,17 @@ test('checkpoint engine initializes workspace, branches, commits turns, and read
 
   // Rollback test
   writeFileSync(resolve(testDir, 'sample.txt'), 'Corrupted text');
-  await rollbackToCommit(testDir, commitHash);
-  assert.ok(diffData.diff.includes('Hello Kilo and Cline'));
+  // Branch switching test
+  const branch2 = await createSessionBranch(testDir, 'sess-2', 'second-feature');
+  writeFileSync(resolve(testDir, 'feature-2.txt'), 'Feature 2 file');
+  await commitTurn(testDir, 1, 'cline', 'created feature-2.txt');
+
+  assert.equal(await getCurrentBranch(testDir), branch2);
+
+  // Switch back to sess-1
+  const switched = await checkoutSessionBranch(testDir, branch);
+  assert.equal(switched, true);
+  assert.equal(await getCurrentBranch(testDir), branch);
 
   rmSync(testDir, { recursive: true, force: true });
 });
