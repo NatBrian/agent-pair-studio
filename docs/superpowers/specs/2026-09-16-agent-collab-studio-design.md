@@ -20,7 +20,7 @@
 * **Collaboration Dynamic**: Two senior engineers working on a shared repository. Each turn reviews peer work, tests code, adds functionality, or contributes to research/discussion.
 
 ### 2.2 Strict Workspace Containment
-* **Dedicated Sandbox Root**: Path locked to `./workspace` (absolute canonical path verified via `realpathSync`).
+* **Dedicated Sandbox Root**: Path locked to `C:\Users\Admin\Documents\Github\agent-collab-studio\kilo-cline-workspace` (absolute canonical path verified via `realpathSync`).
 * **Root Validation**: The orchestrator verifies that the directory exists, is a valid folder, and is NOT the filesystem root (`C:\` or `\` ).
 * **CWD Enforcement**: Every CLI invocation explicitly passes `--dir <abs_path>` (Kilo) or `-c <abs_path>` (Cline) and runs with child process `cwd` set to this directory.
 * **Safety Prompt Guardrails**: Both agents are injected with non-negotiable instructions forbidding path escapes or access to parent directories.
@@ -69,6 +69,18 @@
 * **Tech Stack**: Single-server Node.js + Express + WebSocket (`ws`) backend, serving a zero-build HTML5/Tailwind/Vanilla JS frontend.
 * **Interface Tabs**:
   * **Tab 1: Unified Chat Thread**: Chronological cards for Kilo, Cline, and Human with collapsible tool-call bubbles and markdown rendering.
-  * **Tab 2: Workspace Explorer**: Interactive tree view of `./workspace`, file viewer with syntax highlighting, and turn git diff inspector.
+  * **Tab 2: Workspace Explorer**: Interactive tree view of `./kilo-cline-workspace`, file viewer with syntax highlighting, and turn git diff inspector.
   * **Tab 3: Live Terminal**: Streaming ANSI terminal emulator using `xterm.js` capturing raw CLI stdout/stderr.
   * **Sidebar**: Session history list, "New Session" modal (Custom Topic vs. "Agent Ideation / Surprise Me"), Model selectors, and control buttons (**Run / Step / Pause / Stop / Rollback**).
+
+### 2.9 Real-World CLI Validation & Playwright MCP Testing
+* **Dedicated Execution Directory**: All live multi-agent tests and operations execute inside `C:\Users\Admin\Documents\Github\agent-collab-studio\kilo-cline-workspace`.
+* **Live CLI Multi-Agent Testing**: Validates that actual `kilo` CLI and `cline` CLI processes run, collaborate, generate code, and commit turns in the dedicated directory.
+* **Playwright MCP UI Testing**: Automates testing of the live dashboard via Playwright:
+  * Verifies page load and WebSocket handshake at `http://localhost:3000`.
+  * Tests session initiation and verifies real-time streaming to the Unified Chat thread.
+  * Tests switching to the Workspace Explorer tab and inspecting files and git diffs.
+  * Tests switching to the Live Terminal tab and inspecting ANSI terminal output.
+  * Tests human steering input (Whisper and Broadcast modes).
+  * Captures browser screenshot artifacts for visual verification.
+

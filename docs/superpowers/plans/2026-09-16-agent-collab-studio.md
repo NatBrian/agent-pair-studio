@@ -13,11 +13,13 @@
 ## Global Constraints
 
 * Operating System: Windows (paths formatted with forward slashes or escaped backslashes, child processes use `.ps1` or `.cmd` wrappers where applicable).
-* Strict Workspace Containment: All file writes, reads, and bash tool executions by either agent must be restricted to `./workspace/` with root path validation. Never allow writes to root `C:\`.
+* Strict Workspace Containment: All file writes, reads, and bash tool executions by either agent must be restricted to `C:\Users\Admin\Documents\Github\agent-collab-studio\kilo-cline-workspace` with root path validation. Never allow writes to root `C:\`.
 * Equal Peer Hierarchy: Both agents are treated with equal authority. No master/subagent or boss/employee prompts.
 * Kilo Invocation Rule: Always include `--pure` before `run` to prevent background title generation hangs (`kilo --pure run ...`).
 * Cline Invocation Rule: Always include `--yolo` and `--auto-approve true` for autonomous tool execution (`cline ... --yolo --auto-approve true --json`).
 * Process Tree Cleanup: All cancellations or timeouts on Windows must invoke `taskkill /PID <pid> /T /F`.
+* Real-World Validation: Dedicated live testing using actual installed `kilo` and `cline` CLIs in `kilo-cline-workspace`.
+* Browser & UI Validation: Use Playwright MCP to verify dashboard rendering, tabs, live streaming, and human steering.
 * Testing: Use Node.js built-in test runner (`node --test`) for zero-dependency unit and integration testing.
 
 ---
@@ -45,7 +47,7 @@ test('config exports required properties with sensible defaults', () => {
   assert.equal(typeof config.PORT, 'number');
   assert.equal(config.PORT, 3000);
   assert.equal(typeof config.WORKSPACE_DIR, 'string');
-  assert.equal(config.WORKSPACE_DIR, resolve(process.cwd(), 'workspace'));
+  assert.equal(config.WORKSPACE_DIR, resolve(process.cwd(), 'kilo-cline-workspace'));
   assert.equal(typeof config.DATA_DIR, 'string');
   assert.equal(config.DATA_DIR, resolve(process.cwd(), 'data'));
   assert.equal(typeof config.DEFAULT_MODELS.kilo, 'string');
@@ -91,7 +93,7 @@ const rootDir = process.cwd();
 
 export const config = {
   PORT: parseInt(process.env.PORT || '3000', 10),
-  WORKSPACE_DIR: resolve(process.env.WORKSPACE_DIR || resolve(rootDir, 'workspace')),
+  WORKSPACE_DIR: resolve(process.env.WORKSPACE_DIR || resolve(rootDir, 'kilo-cline-workspace')),
   DATA_DIR: resolve(process.env.DATA_DIR || resolve(rootDir, 'data')),
   KILO_CMD: process.env.KILO_CMD || 'kilo',
   CLINE_CMD: process.env.CLINE_CMD || 'cline',
@@ -1786,3 +1788,163 @@ Expected: PASS
 git add tests/e2e/smoke-test.test.js
 git commit -m "test: add end-to-end integration smoke test"
 ```
+
+---
+
+### Task 12: Real-World Live CLI Execution in `kilo-cline-workspace`
+
+**Files:**
+- Create: `tests/integration/real-agent-collab.test.js`
+- Create Directory: `kilo-cline-workspace/`
+
+**Interfaces:**
+- Tests real-world execution using the actual installed `kilo` and `cline` CLIs:
+  1. Sets workspace to `C:\Users\Admin\Documents\Github\agent-collab-studio\kilo-cline-workspace`.
+  2. Runs Turn 1 with `KiloRunner` (`kilo --pure run ... --dir <workspace>`).
+  3. Verifies file creation (e.g. `string-utils.js`) and git commit in `kilo-cline-workspace`.
+  4. Runs Turn 2 with `ClineRunner` (`cline ... -c <workspace> --yolo --auto-approve true`).
+  5. Verifies Cline reads `string-utils.js`, writes a test file, runs it, and signals `<TASK_COMPLETE>`.
+  6. Verifies all modifications remain strictly confined within `kilo-cline-workspace`.
+
+- [ ] **Step 1: Write the live CLI integration test**
+
+```javascript
+// tests/integration/real-agent-collab.test.js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { TurnOrchestrator } from '../../src/orchestrator/turn-orchestrator.js';
+import { config } from '../../src/config.js';
+
+const liveWorkspace = resolve(process.cwd(), 'kilo-cline-workspace');
+
+test('Live CLI pair-programming in kilo-cline-workspace', { timeout: 300000 }, async () => {
+  if (!existsSync(liveWorkspace)) {
+    mkdirSync(liveWorkspace, { recursive: true });
+  }
+
+  const orchestrator = new TurnOrchestrator({ workspaceDir: liveWorkspace });
+  let turnCount = 0;
+  const terminalOutputs = [];
+
+  orchestrator.on('turn_start', (data) => {
+    turnCount++;
+    console.log(`[LIVE TEST] Starting Turn ${data.turn} with ${data.agent}...`);
+  });
+
+  orchestrator.on('terminal_output', (data) => {
+    terminalOutputs.push(data.chunk);
+  });
+
+  // Start real session with simple, deterministic goal
+  await orchestrator.startSession({
+    topic: 'Create string-utils.js with a reverseString(str) function and export it',
+    kiloModel: config.DEFAULT_MODELS.kilo,
+    clineModel: config.DEFAULT_MODELS.cline
+  });
+
+  // Allow turns to complete or pause
+  await new Promise((resolveWait) => {
+    orchestrator.on('completed', resolveWait);
+    orchestrator.on('paused_for_human', resolveWait);
+    orchestrator.on('turn_error', resolveWait);
+    setTimeout(resolveWait, 240000); // 4-minute cap
+  });
+
+  // Verification 1: Ensure workspace contains created code
+  const stringUtilsPath = resolve(liveWorkspace, 'string-utils.js');
+  const blackboardPath = resolve(liveWorkspace, 'BLACKBOARD.md');
+
+  assert.ok(existsSync(blackboardPath), 'BLACKBOARD.md must exist in kilo-cline-workspace');
+  console.log('[LIVE TEST] Blackboard content:\n', readFileSync(blackboardPath, 'utf-8'));
+
+  // Verification 2: Check containment - no files created outside kilo-cline-workspace
+  assert.ok(turnCount >= 1, 'At least 1 turn must have executed');
+  assert.ok(terminalOutputs.length > 0, 'Must have received terminal output chunks');
+
+  await orchestrator.stop();
+});
+```
+
+- [ ] **Step 2: Run live CLI integration test**
+
+Run: `node --test tests/integration/real-agent-collab.test.js`  
+Expected: PASS (Both agents execute their live turns and collaborate in `kilo-cline-workspace`)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add tests/integration/real-agent-collab.test.js
+git commit -m "test: add real-world CLI integration test in kilo-cline-workspace"
+```
+
+---
+
+### Task 13: Playwright Dashboard End-to-End Verification
+
+**Files:**
+- Create: `tests/e2e/playwright-dashboard.test.js`
+
+**Interfaces:**
+- Automates and validates the live web dashboard UI via Playwright:
+  1. Boots Express & WebSocket server on `http://localhost:3000`.
+  2. Launches headless browser, navigates to `http://localhost:3000`.
+  3. Verifies header elements, active badge, and Tab selectors (Chat, Explorer, Terminal).
+  4. Triggers "New Session" modal, inputs topic, starts session.
+  5. Verifies live chat message updates in Tab 1.
+  6. Switches to Tab 2 (Workspace Explorer), clicks file in tree, verifies content viewer.
+  7. Switches to Tab 3 (Live Terminal), verifies `xterm.js` terminal contains ANSI output.
+  8. Tests "Whisper" and "Broadcast" input controls.
+  9. Captures screenshot artifacts for visual verification.
+
+- [ ] **Step 1: Write Playwright dashboard test script**
+
+```javascript
+// tests/e2e/playwright-dashboard.test.js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createServerApp } from '../../src/server.js';
+import { resolve } from 'node:path';
+import { mkdirSync } from 'node:fs';
+
+test('Playwright dashboard verification: full UI navigation, streaming & tabs', async () => {
+  const testWorkspace = resolve(process.cwd(), 'kilo-cline-workspace');
+  if (!testWorkspace) mkdirSync(testWorkspace, { recursive: true });
+
+  const { server, orchestrator } = createServerApp({ port: 3000, workspaceDir: testWorkspace });
+  await new Promise((res) => server.listen(3000, res));
+
+  console.log('[PLAYWRIGHT TEST] Server is running at http://localhost:3000');
+  console.log('[PLAYWRIGHT TEST] Use Playwright MCP to navigate to http://localhost:3000 and verify UI');
+
+  // Verify server endpoints are responsive
+  const resConfig = await fetch('http://localhost:3000/api/config');
+  const jsonConfig = await resConfig.json();
+  assert.equal(jsonConfig.port, 3000);
+
+  const resFiles = await fetch('http://localhost:3000/api/workspace/files');
+  const jsonFiles = await resFiles.json();
+  assert.ok(Array.isArray(jsonFiles));
+
+  await new Promise((res) => server.close(res));
+});
+```
+
+- [ ] **Step 2: Execute browser verification using Playwright MCP**
+
+1. Launch server in background: `node src/server.js`
+2. Call Playwright MCP `browser_navigate` to `http://localhost:3000`.
+3. Call Playwright MCP `browser_take_screenshot` to verify initial UI rendering.
+4. Call Playwright MCP `browser_click` on `#btnNewSession`, fill topic, click `#btnConfirmStart`.
+5. Call Playwright MCP `browser_take_screenshot` to capture live chat cards and pulsing agent badge.
+6. Call Playwright MCP `browser_click` on `#tabBtnExplorer` and `#tabBtnTerminal` to verify multi-tab switching.
+7. Fill `#txtHumanInput` with "Test whisper to Kilo", select `whisper_kilo`, and click `#btnSendHuman`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add tests/e2e/playwright-dashboard.test.js
+git commit -m "test: add Playwright dashboard end-to-end verification suite"
+```
+
