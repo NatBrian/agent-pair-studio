@@ -1,4 +1,4 @@
-# 🐙 Agent Collab Studio (Kilo CLI & Cline CLI)
+# 🐙 Agent Pair Studio (Kilo CLI & Cline CLI)
 
 An autonomous pair-programming and collaborative execution harness between **Kilo CLI** and **Cline CLI** on Windows, featuring strict sandbox containment, equal peer hierarchy, dual-layer memory, Git time-machine checkpoints, and a live multi-tab web dashboard.
 
@@ -6,7 +6,7 @@ An autonomous pair-programming and collaborative execution harness between **Kil
 
 ## 🌟 Overview & Vision
 
-**Agent Collab Studio** connects two leading terminal coding agents—**Kilo** and **Cline**—into an autonomous, collaborative development team. Neither agent is a manager or subordinate; both interact as equal technical colleagues working together in a shared workspace.
+**Agent Pair Studio** connects two leading terminal coding agents—**Kilo** and **Cline**—into an autonomous, collaborative development team. Neither agent is a manager or subordinate; both interact as equal technical colleagues working together in a shared workspace.
 
 ### Key Capabilities
 
@@ -131,8 +131,8 @@ Ensure the following tools are installed and accessible in your system `PATH`:
 ### 1. Clone & Install Dependencies
 
 ```bash
-git clone https://github.com/nyldn/agent-collab-studio.git
-cd agent-collab-studio
+git clone https://github.com/nyldn/agent-pair-studio.git
+cd agent-pair-studio
 npm install
 ```
 
@@ -144,8 +144,8 @@ npm start
 
 You will see the console confirmation:
 ```
-🐙 Agent Collab Studio is running on http://localhost:3000
-   Workspace: C:\Users\Admin\Documents\Github\agent-collab-studio\kilo-cline-workspace
+🐙 Agent Pair Studio is running on http://localhost:3000
+   Workspace: C:\Users\Admin\Documents\Github\agent-pair-studio\kilo-cline-workspace
    Port: 3000
 ```
 
@@ -201,7 +201,7 @@ While agents converse, you can steer them without breaking their flow:
 ## 📂 Repository Structure
 
 ```
-agent-collab-studio/
+agent-pair-studio/
 ├── data/                               # Persisted JSON session records
 ├── docs/                               # Formal architectural documentation
 │   ├── reference-claude-octopus-learnings.md

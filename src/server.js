@@ -186,6 +186,6 @@ export function createServerApp({ port = config.PORT, workspaceDir = config.WORK
 if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   const { server } = createServerApp();
   server.listen(config.PORT, () => {
-    console.log(`\n🐙 Agent Collab Studio is running on http://localhost:${config.PORT}\n`);
+    console.log(`\n🐙 Agent Pair Studio is running on http://localhost:${config.PORT}\n`);
   });
 }

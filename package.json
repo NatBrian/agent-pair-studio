@@ -1,5 +1,5 @@
 {
-  "name": "agent-collab-studio",
+  "name": "agent-pair-studio",
   "version": "1.0.0",
   "description": "Autonomous pair-programming arena between Kilo CLI and Cline CLI",
   "type": "module",

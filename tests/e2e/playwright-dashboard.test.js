@@ -27,7 +27,7 @@ test('Playwright dashboard verification: endpoints and files ready', async () =>
   const resHtml = await fetch(`http://localhost:${port}/index.html`);
   assert.equal(resHtml.status, 200);
   const html = await resHtml.text();
-  assert.ok(html.includes('Agent Collab Studio'));
+  assert.ok(html.includes('Agent Pair Studio'));
   assert.ok(html.includes('xtermContainer'));
 
   await new Promise((resolve) => {

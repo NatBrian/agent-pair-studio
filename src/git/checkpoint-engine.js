@@ -9,8 +9,8 @@ export async function initWorkspace(workspacePath) {
   const gitDir = resolve(workspacePath, '.git');
   if (!existsSync(gitDir)) {
     await execFileAsync('git', ['init'], { cwd: workspacePath });
-    await execFileAsync('git', ['config', 'user.name', 'Agent Collab Studio'], { cwd: workspacePath });
-    await execFileAsync('git', ['config', 'user.email', 'collab@local.studio'], { cwd: workspacePath });
+    await execFileAsync('git', ['config', 'user.name', 'Agent Pair Studio'], { cwd: workspacePath });
+    await execFileAsync('git', ['config', 'user.email', 'pair@local.studio'], { cwd: workspacePath });
 
     const blackboardPath = resolve(workspacePath, 'BLACKBOARD.md');
     if (!existsSync(blackboardPath)) {

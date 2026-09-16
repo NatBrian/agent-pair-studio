@@ -31,7 +31,7 @@ class TerminalManager {
         scrollback: 5000
       });
       this.mainTerminal.open(mainContainer);
-      this.mainTerminal.writeln('\x1b[1;35m🐙 Agent Collab Studio Live Terminal Ready.\x1b[0m');
+      this.mainTerminal.writeln('\x1b[1;35m🐙 Agent Pair Studio Live Terminal Ready.\x1b[0m');
       this.mainTerminal.writeln('\x1b[90mTip: Toggle Formatted/Raw or run workspace commands directly below.\x1b[0m\r\n');
 
       this.mainTerminal.onScroll(() => {
