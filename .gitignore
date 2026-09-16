@@ -1,0 +1,6 @@
+node_modules/
+data/
+kilo-cline-workspace/
+.playwright-mcp/
+.system_generated/
+*.log
