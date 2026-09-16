@@ -75,3 +75,28 @@ test('TurnOrchestrator resumes a paused or completed session when human sends me
   assert.equal(stepTriggered, true);
 });
 
+test('TurnOrchestrator immediately interrupts running runner and redirects target agent on human message', async () => {
+  const orchestrator = new TurnOrchestrator({ workspaceDir: process.cwd() });
+  orchestrator.session = {
+    id: 'test-sess',
+    topic: 'Immediate steer test',
+    history: []
+  };
+  orchestrator.state = 'RUNNING';
+  orchestrator.activeAgent = 'kilo';
+
+  let cancelCalled = false;
+  orchestrator.runnerInstance = {
+    cancel: async () => { cancelCalled = true; }
+  };
+
+  await orchestrator.injectHumanMessage('Stop and switch to SQLite', 'whisper_cline');
+
+  assert.equal(cancelCalled, true);
+  assert.equal(orchestrator.activeAgent, 'cline');
+  assert.equal(orchestrator.interruptedForSteering, true);
+  assert.equal(orchestrator.whisperQueues.cline.length, 1);
+  assert.equal(orchestrator.whisperQueues.cline[0], 'Stop and switch to SQLite');
+});
+
+

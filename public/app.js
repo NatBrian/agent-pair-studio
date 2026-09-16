@@ -1330,6 +1330,7 @@ document.getElementById('btnSendHuman').onclick = () => {
   if (!text) return;
   ws.send(JSON.stringify({ action: 'human_message', payload: { text, mode } }));
   appendChatMessage('human', `[${mode.toUpperCase()}]: ${text}`, null);
+  updateLiveTurnStatus('⚡ Human intervention received: Redirecting agent immediately...');
   input.value = '';
 };
 

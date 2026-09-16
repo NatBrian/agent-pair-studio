@@ -16,6 +16,7 @@ export class TurnOrchestrator extends EventEmitter {
     this.whisperQueues = { kilo: [], cline: [] };
     this.broadcastQueue = [];
     this.runnerInstance = null;
+    this.interruptedForSteering = false;
   }
 
   parseHandoff(text = '') {
@@ -45,24 +46,30 @@ export class TurnOrchestrator extends EventEmitter {
     return 'HANDOFF';
   }
 
-  injectHumanMessage(text, mode = 'broadcast') {
+  async injectHumanMessage(text, mode = 'broadcast') {
+    let targetAgent = this.activeAgent;
     if (mode === 'whisper_kilo') {
+      targetAgent = 'kilo';
       this.whisperQueues.kilo.push(text);
-      if (this.state !== 'RUNNING') {
-        this.activeAgent = 'kilo';
-      }
     } else if (mode === 'whisper_cline') {
+      targetAgent = 'cline';
       this.whisperQueues.cline.push(text);
-      if (this.state !== 'RUNNING') {
-        this.activeAgent = 'cline';
-      }
     } else {
       this.broadcastQueue.push(text);
+    }
+
+    // Option 1: Immediate Steering — Interrupt running runner and redirect right now
+    if (this.state === 'RUNNING' && this.runnerInstance) {
+      this.activeAgent = targetAgent;
+      this.interruptedForSteering = true;
+      await this.runnerInstance.cancel();
+      return;
     }
 
     // If there is an existing session and the loop is paused, completed, or idle/stopped,
     // sending a human message automatically resumes the session to continue from that input.
     if (this.session && this.state !== 'RUNNING') {
+      this.activeAgent = targetAgent;
       this.state = 'RUNNING';
       this.maxTurns = Math.max(this.maxTurns || config.LOOP_LIMITS.MAX_TURNS, this.currentTurn + config.LOOP_LIMITS.MAX_TURNS);
       this.emit('resumed');
@@ -180,8 +187,19 @@ export class TurnOrchestrator extends EventEmitter {
         (chunk) => this.emit('terminal_output', { turn: this.currentTurn, agent, chunk })
       );
     } catch (err) {
+      if (this.interruptedForSteering) {
+        this.interruptedForSteering = false;
+        await this.handleSteeringInterruption(agent, prompt, err.message);
+        return;
+      }
       const classification = classifyError(1, err.message);
       this.emit('turn_error', { turn: this.currentTurn, agent, error: err.message, classification });
+      return;
+    }
+
+    if (this.interruptedForSteering || (result && result.wasCancelled)) {
+      this.interruptedForSteering = false;
+      await this.handleSteeringInterruption(agent, prompt, result ? result.text : '');
       return;
     }
 
@@ -221,6 +239,28 @@ export class TurnOrchestrator extends EventEmitter {
       this.emit('paused_for_human', { question: handoff.question, agent });
       return;
     }
+
+    if (this.state === 'RUNNING') {
+      setImmediate(() => this.executeTurnStep());
+    }
+  }
+
+  async handleSteeringInterruption(agent, prompt, partialText = '') {
+    const summary = 'interrupted by human steering';
+    const commitHash = await commitTurn(this.workspaceDir, this.currentTurn, agent, summary);
+    const diff = await getTurnDiff(this.workspaceDir);
+
+    const turnRecord = {
+      turn: this.currentTurn,
+      agent,
+      prompt,
+      text: partialText ? `${partialText}\n\n*(Turn redirected by human steering)*` : '*(Turn redirected by human steering)*',
+      commitHash,
+      diff: diff.diff,
+      interrupted: true
+    };
+    this.session.history.push(turnRecord);
+    this.emit('turn_end', turnRecord);
 
     if (this.state === 'RUNNING') {
       setImmediate(() => this.executeTurnStep());

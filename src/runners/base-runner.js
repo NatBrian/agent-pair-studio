@@ -132,6 +132,7 @@ export class BaseRunner {
             exitCode: exitCode ?? 0,
             rawStdout,
             rawStderr,
+            wasCancelled: !!this.wasCancelled,
             text: this.extractAssistantText(rawStdout, rawStderr)
           });
         }
@@ -140,6 +141,7 @@ export class BaseRunner {
   }
 
   async cancel() {
+    this.wasCancelled = true;
     if (this.currentPid) {
       await terminateProcessTree(this.currentPid);
       this.currentPid = null;

@@ -136,7 +136,7 @@ export function createServerApp({ port = config.PORT, workspaceDir = config.WORK
         } else if (action === 'stop') {
           await orchestrator.stop();
         } else if (action === 'human_message') {
-          orchestrator.injectHumanMessage(payload.text, payload.mode);
+          await orchestrator.injectHumanMessage(payload.text, payload.mode);
         } else if (action === 'select_session') {
           const sessionData = await loadSession(payload.sessionId);
           if (sessionData) {
