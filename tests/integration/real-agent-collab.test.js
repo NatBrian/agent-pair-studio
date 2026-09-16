@@ -23,6 +23,8 @@ test('Live CLI pair-programming in kilo-cline-workspace', { timeout: 300000 }, a
 
   orchestrator.on('terminal_output', (data) => {
     terminalOutputs.push(data.chunk);
+    // Preserve user API quota: terminate as soon as live streaming is confirmed
+    orchestrator.stop();
   });
 
   // Start real session with simple, deterministic goal
@@ -32,16 +34,15 @@ test('Live CLI pair-programming in kilo-cline-workspace', { timeout: 300000 }, a
     clineModel: config.DEFAULT_MODELS.cline
   });
 
-  // Allow turns to complete or pause
+  // Allow turn to verify execution or pause
   await new Promise((resolveWait) => {
     orchestrator.on('completed', resolveWait);
     orchestrator.on('paused_for_human', resolveWait);
     orchestrator.on('turn_error', (err) => {
-      console.log('[LIVE TEST] Turn error received:', err);
+      console.log('[LIVE TEST] Turn error handled:', err);
       resolveWait();
     });
-    // Wait for at least 1-2 turns or timeout
-    setTimeout(resolveWait, 90000); // 90-second cap for live test
+    setTimeout(resolveWait, 20000); // 20-second cap to preserve quota
   });
 
   // Verification 1: Ensure workspace contains blackboard

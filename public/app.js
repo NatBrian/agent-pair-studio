@@ -61,6 +61,8 @@ function updateActiveBadge(agent, turn) {
   }
 }
 
+let selectedFilePath = null;
+
 function appendChatMessage(agent, text, turn, diff) {
   const chat = document.getElementById('chatMessages');
   const card = document.createElement('div');
@@ -68,8 +70,8 @@ function appendChatMessage(agent, text, turn, diff) {
   const isCline = agent === 'cline';
   const isHuman = agent === 'human';
 
-  let cardColor = 'bg-slate-900 border-l-2 border-slate-700';
-  let tagColor = 'text-slate-400';
+  let cardColor = 'bg-slate-900 border-l-2 border-indigo-500';
+  let tagColor = 'text-indigo-400';
 
   if (isKilo) {
     cardColor = 'chat-card-kilo bg-slate-900';
@@ -85,11 +87,11 @@ function appendChatMessage(agent, text, turn, diff) {
   card.className = `${cardColor} p-3 rounded shadow text-xs space-y-1.5`;
   card.innerHTML = `
     <div class="flex items-center justify-between font-mono ${tagColor}">
-      <span class="font-bold">${agent.toUpperCase()}</span>
+      <span class="font-bold">${escapeHtml(agent.toUpperCase())}</span>
       ${turn ? `<span class="text-slate-500">Turn ${turn}</span>` : ''}
     </div>
-    <div class="text-slate-200 whitespace-pre-wrap">${escapeHtml(text)}</div>
-    ${diff ? `<details class="mt-2 text-slate-400 font-mono"><summary class="cursor-pointer text-slate-500 hover:text-slate-300">View Git Diff</summary><pre class="bg-slate-950 p-2 rounded mt-1 overflow-x-auto text-emerald-400 text-[11px]">${escapeHtml(diff)}</pre></details>` : ''}
+    <div class="text-slate-200 leading-relaxed">${formatContent(text)}</div>
+    ${formatDiff(diff)}
   `;
   chat.appendChild(card);
   chat.scrollTop = chat.scrollHeight;
@@ -97,6 +99,40 @@ function appendChatMessage(agent, text, turn, diff) {
 
 function escapeHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function formatContent(text) {
+  if (!text || !text.trim()) {
+    return '<span class="text-slate-500 italic">(No response content)</span>';
+  }
+  let safe = escapeHtml(text);
+  // Code blocks: ```lang ... ```
+  safe = safe.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_m, lang, code) => {
+    return `<div class="my-2 rounded bg-slate-950 border border-slate-800 p-2 font-mono text-[11px] overflow-x-auto"><div class="text-slate-500 text-[10px] mb-1 font-semibold uppercase">${lang || 'code'}</div><pre class="text-emerald-400">${code.trim()}</pre></div>`;
+  });
+  // Inline code: `code`
+  safe = safe.replace(/`([^`]+)`/g, '<code class="bg-slate-950 px-1 py-0.5 rounded text-amber-300 font-mono text-[11px]">$1</code>');
+  // Bold: **text**
+  safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong class="text-slate-100 font-bold">$1</strong>');
+  return `<div class="whitespace-pre-wrap">${safe}</div>`;
+}
+
+function formatDiff(diff) {
+  if (!diff || !diff.trim()) return '';
+  const lines = escapeHtml(diff).split('\n');
+  const colored = lines.map(line => {
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      return `<span class="text-emerald-400">${line}</span>`;
+    }
+    if (line.startsWith('-') && !line.startsWith('---')) {
+      return `<span class="text-rose-400">${line}</span>`;
+    }
+    if (line.startsWith('@@')) {
+      return `<span class="text-cyan-400">${line}</span>`;
+    }
+    return `<span class="text-slate-400">${line}</span>`;
+  }).join('\n');
+  return `<details class="mt-2 text-slate-400 font-mono"><summary class="cursor-pointer text-slate-500 hover:text-slate-300">View Git Diff</summary><pre class="bg-slate-950 p-2 rounded mt-1 overflow-x-auto text-[11px]">${colored}</pre></details>`;
 }
 
 async function refreshFileTree() {
@@ -112,17 +148,23 @@ async function refreshFileTree() {
 function renderTreeNodes(nodes, container) {
   for (const node of nodes) {
     const el = document.createElement('div');
-    el.className = 'py-1 px-2 text-xs hover:bg-slate-800 cursor-pointer rounded select-none';
     if (node.type === 'directory') {
-      el.innerHTML = `📁 <span class="font-semibold text-slate-300">${node.name}</span>`;
+      el.className = 'py-1 px-2 text-xs hover:bg-slate-800 cursor-pointer rounded select-none';
+      el.innerHTML = `📁 <span class="font-semibold text-slate-300">${escapeHtml(node.name)}</span>`;
       container.appendChild(el);
       const sub = document.createElement('div');
       sub.className = 'pl-3';
       renderTreeNodes(node.children, sub);
       container.appendChild(sub);
     } else {
-      el.innerHTML = `📄 <span class="text-slate-400">${node.name}</span>`;
-      el.onclick = () => loadFileContent(node.path);
+      const isSelected = selectedFilePath === node.path;
+      el.className = `py-1 px-2 text-xs cursor-pointer rounded select-none file-item transition ${isSelected ? 'bg-slate-800 text-indigo-300 font-medium' : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'}`;
+      el.innerHTML = `📄 <span>${escapeHtml(node.name)}</span>`;
+      el.onclick = () => {
+        selectedFilePath = node.path;
+        loadFileContent(node.path);
+        refreshFileTree();
+      };
       container.appendChild(el);
     }
   }

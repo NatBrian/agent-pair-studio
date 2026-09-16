@@ -125,7 +125,15 @@ export class TurnOrchestrator extends EventEmitter {
       return;
     }
 
-    const commitHash = await commitTurn(this.workspaceDir, this.currentTurn, agent, result.text.slice(0, 50));
+    if (result.exitCode !== 0 && !result.text) {
+      const errMsg = (result.rawStderr || '').trim() || `Process exited with code ${result.exitCode}`;
+      const classification = classifyError(result.exitCode, errMsg);
+      this.emit('turn_error', { turn: this.currentTurn, agent, error: errMsg, classification });
+      return;
+    }
+
+    const summary = (result.text || 'turn execution').slice(0, 50);
+    const commitHash = await commitTurn(this.workspaceDir, this.currentTurn, agent, summary);
     const diff = await getTurnDiff(this.workspaceDir);
 
     const turnRecord = {

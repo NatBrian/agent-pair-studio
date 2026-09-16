@@ -2,6 +2,14 @@ import { spawn } from 'node:child_process';
 import { terminateProcessTree } from '../utils/process-supervisor.js';
 import { redactSecrets } from '../utils/security.js';
 
+export function escapeCmdArg(arg) {
+  if (typeof arg !== 'string') return String(arg);
+  if (/[\s"^&|<>]/.test(arg) || arg.includes('\n')) {
+    return `"${arg.replace(/"/g, '""')}"`;
+  }
+  return arg;
+}
+
 export class BaseRunner {
   constructor({ cwd, timeoutSeconds = 180 } = {}) {
     this.cwd = cwd;
@@ -15,7 +23,8 @@ export class BaseRunner {
       let rawStderr = '';
       let timedOut = false;
 
-      const child = spawn(command, args, {
+      const safeArgs = args.map(escapeCmdArg);
+      const child = spawn(command, safeArgs, {
         cwd: this.cwd,
         windowsHide: true,
         shell: true,
@@ -61,7 +70,7 @@ export class BaseRunner {
             exitCode: exitCode ?? 0,
             rawStdout,
             rawStderr,
-            text: this.extractAssistantText(rawStdout)
+            text: this.extractAssistantText(rawStdout, rawStderr)
           });
         }
       });
@@ -87,7 +96,7 @@ export class BaseRunner {
     }
   }
 
-  extractAssistantText(stdout) {
+  extractAssistantText(stdout, stderr = '') {
     const lines = stdout.split('\n');
     const textParts = [];
     for (const line of lines) {
@@ -98,9 +107,15 @@ export class BaseRunner {
           if (parsed.text) textParts.push(parsed.text);
           if (parsed.content) textParts.push(parsed.content);
           if (parsed.message) textParts.push(parsed.message);
+          if (parsed.response) textParts.push(parsed.response);
         } catch {}
       }
     }
-    return textParts.length > 0 ? textParts.join('\n') : stdout.trim();
+    if (textParts.length > 0) return textParts.join('\n');
+    const cleanOut = stdout.trim();
+    if (cleanOut) return cleanOut;
+    const cleanErr = stderr.trim();
+    if (cleanErr) return cleanErr;
+    return '';
   }
 }
