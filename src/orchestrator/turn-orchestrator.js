@@ -19,19 +19,26 @@ export class TurnOrchestrator extends EventEmitter {
   }
 
   parseHandoff(text = '') {
-    if (/<TASK_COMPLETE>/i.test(text)) return 'TASK_COMPLETE';
+    // Strip markdown code fences and inline backticks so mentioning tags in instructions doesn't trigger false positives
+    const stripped = text.replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '');
+
+    // Standalone completion tag, not preceded by instructional verbs like 'emit', 'include', 'write'
+    if (/(?<!(?:emit|include|write|type|tag)\s+)<TASK_COMPLETE>/i.test(stripped)) {
+      return 'TASK_COMPLETE';
+    }
+
     // 1. <NEED_HUMAN question="..." />
-    const attrMatch = text.match(/<NEED_HUMAN\s+question=["']([^"']+)["']\s*\/?>/i);
+    const attrMatch = stripped.match(/<NEED_HUMAN\s+question=["']([^"']+)["']\s*\/?>/i);
     if (attrMatch) {
       return { type: 'NEED_HUMAN', question: attrMatch[1].trim() };
     }
     // 2. <NEED_HUMAN>...</NEED_HUMAN>
-    const tagMatch = text.match(/<NEED_HUMAN>([\s\S]*?)<\/NEED_HUMAN>/i);
+    const tagMatch = stripped.match(/<NEED_HUMAN>([\s\S]*?)<\/NEED_HUMAN>/i);
     if (tagMatch) {
       return { type: 'NEED_HUMAN', question: tagMatch[1].trim() };
     }
     // 3. <NEED_HUMAN: ...>
-    const colonMatch = text.match(/<NEED_HUMAN:\s*([^>]+)>/i);
+    const colonMatch = stripped.match(/<NEED_HUMAN:\s*([^>]+)>/i);
     if (colonMatch) {
       return { type: 'NEED_HUMAN', question: colonMatch[1].trim() };
     }
@@ -198,6 +205,9 @@ export class TurnOrchestrator extends EventEmitter {
     this.session.history.push(turnRecord);
     this.emit('turn_end', turnRecord);
 
+    // Toggle peer agent for subsequent turns or human continuation
+    this.activeAgent = peer;
+
     const handoff = this.parseHandoff(result.text);
     if (handoff === 'TASK_COMPLETE') {
       this.state = 'COMPLETED';
@@ -209,9 +219,6 @@ export class TurnOrchestrator extends EventEmitter {
       this.emit('paused_for_human', { question: handoff.question, agent });
       return;
     }
-
-    // Toggle peer agent
-    this.activeAgent = peer;
 
     if (this.state === 'RUNNING') {
       setImmediate(() => this.executeTurnStep());

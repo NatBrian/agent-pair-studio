@@ -14,13 +14,14 @@ test('KiloRunner constructs command arguments with --pure and --auto', () => {
   assert.ok(args.includes('session-123'));
 });
 
-test('ClineRunner constructs command arguments with --yolo and --auto-approve', () => {
+test('ClineRunner constructs command arguments with --json and --auto-approve', () => {
   const runner = new ClineRunner({ cwd: 'C:/sandbox', model: 'cline-free/deepseek-v4.1-flash' });
   const args = runner.buildArgs('Test prompt', 'session-456');
-  assert.ok(args.includes('--yolo'));
+  assert.ok(args.includes('--json'));
   assert.ok(args.includes('--auto-approve'));
   assert.ok(args.includes('-c'));
   assert.ok(args.includes('C:/sandbox'));
   assert.ok(args.includes('--id'));
   assert.ok(args.includes('session-456'));
+  assert.equal(args[args.length - 1], 'Test prompt');
 });

@@ -7,6 +7,8 @@ test('TurnOrchestrator alternates turns and detects handoff tags', () => {
 
   assert.equal(orchestrator.parseHandoff('I implemented tests. <HANDOFF> over to you'), 'HANDOFF');
   assert.equal(orchestrator.parseHandoff('Everything is finished! <TASK_COMPLETE>'), 'TASK_COMPLETE');
+  assert.equal(orchestrator.parseHandoff('Please run tests and then emit `<TASK_COMPLETE>` when done.'), 'HANDOFF');
+  assert.equal(orchestrator.parseHandoff('Next step: please write <TASK_COMPLETE> at the end.'), 'HANDOFF');
   const needHumanAttr = orchestrator.parseHandoff('Which database? <NEED_HUMAN question="SQLite or Postgres?">');
   assert.equal(needHumanAttr.type, 'NEED_HUMAN');
   assert.equal(needHumanAttr.question, 'SQLite or Postgres?');

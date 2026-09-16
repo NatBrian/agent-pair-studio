@@ -9,13 +9,14 @@ export class ClineRunner extends BaseRunner {
   }
 
   buildArgs(prompt, sessionId) {
-    const args = [prompt, '-c', this.cwd, '--auto-approve', 'true', '--yolo', '--json'];
+    const args = ['--json', '--auto-approve', 'true', '-c', this.cwd];
     if (this.model) {
       args.push('-m', this.model);
     }
     if (sessionId && !sessionId.startsWith('cline-sess-') && !sessionId.startsWith('new:')) {
       args.push('--id', sessionId);
     }
+    args.push(prompt);
     return args;
   }
 

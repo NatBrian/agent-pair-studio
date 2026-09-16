@@ -35,7 +35,7 @@ export const config = {
   },
   LOOP_LIMITS: {
     MAX_TURNS: parseInt(process.env.MAX_TURNS || '20', 10),
-    TURN_TIMEOUT_SECONDS: parseInt(process.env.TURN_TIMEOUT_SECONDS || '180', 10),
+    TURN_TIMEOUT_SECONDS: parseInt(process.env.TURN_TIMEOUT_SECONDS || '360', 10),
     MAX_RETRIES: 3,
     RETRY_DELAYS_MS: [10000, 20000, 30000]
   }

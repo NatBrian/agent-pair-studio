@@ -14,5 +14,5 @@ test('config exports required properties with sensible defaults', () => {
   assert.equal(typeof config.DEFAULT_MODELS.cline, 'string');
   assert.equal(config.DEFAULT_MODELS.cline, 'cline-free/deepseek-v4.1-flash');
   assert.equal(config.LOOP_LIMITS.MAX_TURNS, 20);
-  assert.equal(config.LOOP_LIMITS.TURN_TIMEOUT_SECONDS, 180);
+  assert.equal(config.LOOP_LIMITS.TURN_TIMEOUT_SECONDS, 360);
 });

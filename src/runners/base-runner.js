@@ -81,6 +81,7 @@ export class BaseRunner {
         cwd: this.cwd,
         windowsHide: true,
         shell,
+        stdio: ['ignore', 'pipe', 'pipe'],
         env: {
           ...process.env,
           CI: '1',
@@ -157,6 +158,13 @@ export class BaseRunner {
       if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
         try {
           const parsed = JSON.parse(trimmed);
+          // 0. Cline run_result or final agent done event
+          if (parsed.type === 'run_result' && typeof parsed.text === 'string' && parsed.text.trim()) {
+            return parsed.text.trim();
+          }
+          if (parsed.type === 'agent_event' && parsed.event && parsed.event.type === 'done' && typeof parsed.event.text === 'string' && parsed.event.text.trim()) {
+            return parsed.event.text.trim();
+          }
           // 1. Kilo NDJSON format: { type: 'text', part: { text: '...' } }
           if (parsed.part && typeof parsed.part.text === 'string') {
             const t = parsed.part.text.trim();
