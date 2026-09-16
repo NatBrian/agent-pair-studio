@@ -91,13 +91,20 @@ export class BaseRunner {
 
       this.currentPid = child.pid;
 
-      const timer = setTimeout(async () => {
-        timedOut = true;
-        await terminateProcessTree(child.pid);
-        reject(new Error(`Process timed out after ${this.timeoutSeconds} seconds`));
-      }, this.timeoutSeconds * 1000);
+      let activityTimer = null;
+      const resetActivityTimer = () => {
+        if (activityTimer) clearTimeout(activityTimer);
+        activityTimer = setTimeout(async () => {
+          timedOut = true;
+          await terminateProcessTree(child.pid);
+          reject(new Error(`Process timed out after ${this.timeoutSeconds} seconds of inactivity`));
+        }, this.timeoutSeconds * 1000);
+      };
+
+      resetActivityTimer();
 
       child.stdout.on('data', (chunk) => {
+        resetActivityTimer();
         const text = redactSecrets(chunk.toString('utf-8'));
         rawStdout += text;
         onTerminalOutput(text);
@@ -105,19 +112,20 @@ export class BaseRunner {
       });
 
       child.stderr.on('data', (chunk) => {
+        resetActivityTimer();
         const text = redactSecrets(chunk.toString('utf-8'));
         rawStderr += text;
         onTerminalOutput(text);
       });
 
       child.on('error', async (err) => {
-        clearTimeout(timer);
+        if (activityTimer) clearTimeout(activityTimer);
         this.currentPid = null;
         reject(err);
       });
 
       child.on('close', (exitCode) => {
-        clearTimeout(timer);
+        if (activityTimer) clearTimeout(activityTimer);
         this.currentPid = null;
         if (!timedOut) {
           resolve({

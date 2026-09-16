@@ -13,6 +13,7 @@ class TerminalManager {
     this.currentBranch = 'master';
     this.commandHistory = [];
     this.historyIndex = -1;
+    this.isThinking = false;
   }
 
   init() {
@@ -321,8 +322,21 @@ class TerminalManager {
     if (badge) badge.textContent = this.currentBranch;
   }
 
+  closeThinking() {
+    if (this.isThinking) {
+      this.isThinking = false;
+      return '\x1b[0m\r\n\r\n';
+    }
+    return '';
+  }
+
+  resetStreamState() {
+    this.isThinking = false;
+  }
+
   switchSession(sessionId, branch) {
     this.currentSessionId = sessionId;
+    this.resetStreamState();
     if (branch) this.updateBranch(branch);
     this.replayCurrentSession();
   }
@@ -331,6 +345,7 @@ class TerminalManager {
     if (!this.mainTerminal) return;
     this.mainTerminal.clear();
     if (this.drawerTerminal) this.drawerTerminal.clear();
+    this.resetStreamState();
 
     const logs = this.sessionLogs.get(this.currentSessionId) || [];
     for (const item of logs) {
@@ -388,7 +403,8 @@ class TerminalManager {
 
   formatChunk(raw, agent) {
     if (!raw.includes('{"') && !raw.includes('{"type"')) {
-      return raw;
+      const close = this.closeThinking();
+      return close + raw.replace(/\r?\n/g, '\r\n');
     }
 
     const lines = raw.split(/\r?\n/);
@@ -397,24 +413,25 @@ class TerminalManager {
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) {
-        formatted.push('');
         continue;
       }
       if (!trimmed.startsWith('{')) {
-        formatted.push(line);
+        const close = this.closeThinking();
+        formatted.push(close + line + '\r\n');
         continue;
       }
 
       try {
         const obj = JSON.parse(trimmed);
-        const lineText = this.formatJsonObject(obj, agent);
-        if (lineText) formatted.push(lineText);
+        const text = this.formatJsonObject(obj, agent);
+        if (text) formatted.push(text);
       } catch {
-        formatted.push(line);
+        const close = this.closeThinking();
+        formatted.push(close + line + '\r\n');
       }
     }
 
-    return formatted.join('\r\n');
+    return formatted.join('');
   }
 
   formatJsonObject(obj, agent) {
@@ -424,51 +441,77 @@ class TerminalManager {
 
     // 1. Tool use in Kilo format
     if (obj.type === 'tool_use' || obj.part?.type === 'tool') {
+      const close = this.closeThinking();
       const tool = obj.part?.tool || obj.tool || 'command';
       const input = obj.part?.state?.input || obj.input || {};
       const desc = input.command || input.filePath || input.description || JSON.stringify(input);
-      return `${agentTag}\x1b[1;33m⚡ Tool Call [${tool}]:\x1b[0m \x1b[36m${desc}\x1b[0m`;
+      return `${close}\r\n${agentTag}\x1b[1;33m⚡ Tool Call [${tool}]:\x1b[0m \x1b[36m${desc}\x1b[0m\r\n`;
     }
 
     // 2. Tool result / state output
     if (obj.part?.state?.output) {
-      const out = String(obj.part.state.output).trim();
-      return `\x1b[90m┌─ Output:\x1b[0m\r\n\x1b[37m${out}\x1b[0m\r\n\x1b[90m└─────────\x1b[0m`;
+      const close = this.closeThinking();
+      const out = String(obj.part.state.output).trim().replace(/\r?\n/g, '\r\n');
+      return `${close}\x1b[90m┌─ Output:\x1b[0m\r\n\x1b[37m${out}\x1b[0m\r\n\x1b[90m└─────────\x1b[0m\r\n`;
     }
 
     // 3. Step start / finish
     if (obj.type === 'step_start' || obj.part?.type === 'step-start') {
-      return `${agentTag}\x1b[90m▶ Turn Step Started\x1b[0m`;
+      const close = this.closeThinking();
+      return `${close}\r\n${agentTag}\x1b[90m▶ Turn Step Started\x1b[0m\r\n`;
     }
     if (obj.type === 'step_finish' || obj.part?.type === 'step-finish') {
+      const close = this.closeThinking();
       const reason = obj.part?.reason || 'complete';
-      return `${agentTag}\x1b[90m✔ Step Finished (${reason})\x1b[0m`;
+      return `${close}${agentTag}\x1b[90m✔ Step Finished (${reason})\x1b[0m\r\n`;
     }
 
     // 4. Cline agent_event
     if (obj.type === 'agent_event' && obj.event) {
       const ev = obj.event;
       if (ev.type === 'iteration_start') {
-        return `${agentTag}\x1b[90m▶ Iteration ${ev.iteration}\x1b[0m`;
+        const close = this.closeThinking();
+        return `${close}\r\n${agentTag}\x1b[90m▶ Iteration ${ev.iteration}\x1b[0m\r\n`;
       }
       if (ev.type === 'content_start' && ev.contentType === 'tool') {
+        const close = this.closeThinking();
         const cmd = ev.input?.commands ? ev.input.commands.join(' && ') : (ev.toolName || 'tool');
-        return `${agentTag}\x1b[1;33m⚡ Tool Call [${ev.toolName}]:\x1b[0m \x1b[36m${cmd}\x1b[0m`;
-      }
-      if (ev.type === 'content_update' && ev.update?.chunk) {
-        return `\x1b[37m${ev.update.chunk}\x1b[0m`;
+        return `${close}\r\n${agentTag}\x1b[1;33m⚡ Tool Call [${ev.toolName}]:\x1b[0m \x1b[36m${cmd}\x1b[0m\r\n`;
       }
       if (ev.type === 'content_start' && ev.contentType === 'reasoning') {
-        return `${agentTag}\x1b[38;5;141m🧠 Thinking:\x1b[0m \x1b[38;5;244m${ev.reasoning || ''}\x1b[0m`;
+        let prefix = '';
+        if (!this.isThinking) {
+          this.isThinking = true;
+          prefix = `\r\n${agentTag}\x1b[38;5;141m🧠 Thinking:\x1b[0m\r\n  \x1b[38;5;244m`;
+        }
+        const text = ev.reasoning || '';
+        return `${prefix}${text.replace(/\r?\n/g, '\r\n  ')}`;
+      }
+      if (ev.type === 'content_update' && ev.contentType === 'reasoning') {
+        let prefix = '';
+        if (!this.isThinking) {
+          this.isThinking = true;
+          prefix = `\r\n${agentTag}\x1b[38;5;141m🧠 Thinking:\x1b[0m\r\n  \x1b[38;5;244m`;
+        }
+        const text = ev.update?.chunk || ev.reasoning || '';
+        return `${prefix}${text.replace(/\r?\n/g, '\r\n  ')}`;
       }
       if (ev.type === 'content_start' && ev.contentType === 'text') {
-        return `\x1b[97m${ev.text || ''}\x1b[0m`;
+        const close = this.closeThinking();
+        const text = ev.text || '';
+        return `${close}\x1b[97m${text.replace(/\r?\n/g, '\r\n')}\x1b[0m`;
+      }
+      if (ev.type === 'content_update' && ev.update?.chunk) {
+        const close = this.closeThinking();
+        const text = ev.update.chunk;
+        return `${close}\x1b[97m${text.replace(/\r?\n/g, '\r\n')}\x1b[0m`;
       }
     }
 
-    // 5. General text part
+    // 5. General text part (Kilo format)
     if (obj.type === 'text' && obj.part?.text) {
-      return `\x1b[97m${obj.part.text.trim()}\x1b[0m`;
+      const close = this.closeThinking();
+      return `${close}\x1b[97m${obj.part.text.replace(/\r?\n/g, '\r\n')}\x1b[0m`;
     }
 
     return '';
@@ -558,7 +601,27 @@ function connectWs() {
 
   ws.onmessage = (event) => {
     const { type, payload } = JSON.parse(event.data);
-    if (type === 'turn_start') {
+    if (type === 'session_start') {
+      const sess = payload.session;
+      if (sess) {
+        termManager.switchSession(sess.id, sess.branch);
+        document.getElementById('lblSessionTitle').textContent = sess.topic || sess.id;
+        const branchBadge = document.getElementById('headerBranchBadge');
+        if (branchBadge) {
+          if (sess.branch) {
+            branchBadge.textContent = sess.branch;
+            branchBadge.classList.remove('hidden');
+          } else {
+            branchBadge.classList.add('hidden');
+          }
+        }
+        clearChatMessages();
+        hideSessionBanner();
+        loadSessionsList();
+        refreshFileTree();
+      }
+    } else if (type === 'turn_start') {
+      termManager.resetStreamState();
       updatePauseButton(false);
       hideSessionBanner();
       updateActiveBadge(payload.agent, payload.turn);
@@ -577,6 +640,7 @@ function connectWs() {
       refreshFileTree();
       if (payload.branch) termManager.updateBranch(payload.branch);
     } else if (type === 'turn_end') {
+      termManager.resetStreamState();
       hideLiveTurnCard();
       updateWaitingBadge(null);
       appendChatMessage(payload.agent, payload.text, payload.turn, payload.diff);
@@ -1001,12 +1065,26 @@ function formatDiff(diff) {
 }
 
 function getFileIcon(name) {
-  if (name.endsWith('.test.js') || name.endsWith('.spec.js')) return '🧪';
-  if (name.endsWith('.js') || name.endsWith('.mjs') || name.endsWith('.ts')) return '⚡';
-  if (name.endsWith('.md')) return '📝';
-  if (name.endsWith('.json')) return '⚙️';
-  if (name.endsWith('.html')) return '🌐';
-  if (name.endsWith('.css')) return '🎨';
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.test.js') || lower.endsWith('.spec.js') || lower.endsWith('.test.ts') || lower.endsWith('_test.py') || lower.startsWith('test_')) return '🧪';
+  if (lower.endsWith('.py') || lower.endsWith('.pyw') || lower.endsWith('.ipynb')) return '🐍';
+  if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs') || lower.endsWith('.ts') || lower.endsWith('.tsx') || lower.endsWith('.jsx')) return '⚡';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.rst') || lower.endsWith('.txt')) return '📝';
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return '🌐';
+  if (lower.endsWith('.css') || lower.endsWith('.scss') || lower.endsWith('.sass') || lower.endsWith('.less')) return '🎨';
+  if (lower.endsWith('.json') || lower.endsWith('.yaml') || lower.endsWith('.yml') || lower.endsWith('.toml') || lower.endsWith('.ini') || lower.endsWith('.xml')) return '⚙️';
+  if (lower.startsWith('.env')) return '🔒';
+  if (lower.startsWith('.git') || lower === '.gitignore' || lower === '.gitattributes') return '🌿';
+  if (lower.endsWith('.sh') || lower.endsWith('.bash') || lower.endsWith('.zsh')) return '💻';
+  if (lower.endsWith('.bat') || lower.endsWith('.cmd') || lower.endsWith('.ps1')) return '📜';
+  if (lower.endsWith('.rs')) return '🦀';
+  if (lower.endsWith('.go')) return '🐹';
+  if (lower.endsWith('.c') || lower.endsWith('.cpp') || lower.endsWith('.h') || lower.endsWith('.hpp')) return '⚙️';
+  if (lower.endsWith('.java') || lower.endsWith('.kt')) return '☕';
+  if (lower.endsWith('.sql') || lower.endsWith('.sqlite') || lower.endsWith('.db')) return '🗄️';
+  if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.gif') || lower.endsWith('.svg') || lower.endsWith('.webp') || lower.endsWith('.ico')) return '🖼️';
+  if (lower.endsWith('.lock') || lower === 'package-lock.json') return '🔐';
+  if (lower.endsWith('.zip') || lower.endsWith('.tar') || lower.endsWith('.gz') || lower.endsWith('.7z')) return '📦';
   return '📄';
 }
 

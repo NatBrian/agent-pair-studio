@@ -107,6 +107,8 @@ export class TurnOrchestrator extends EventEmitter {
     this.activeAgent = first;
     this.state = 'RUNNING';
 
+    this.emit('session_start', { session: this.session });
+
     // Protocol instructions so agents know how to hand off and conclude
     const protocolText = `Pair-programming protocol:
 - Coordinate tasks and architectural decisions in BLACKBOARD.md.

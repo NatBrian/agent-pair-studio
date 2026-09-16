@@ -28,6 +28,12 @@ export function createServerApp({ port = config.PORT, workspaceDir = config.WORK
   }
 
   // Forward orchestrator events to WebSocket clients
+  orchestrator.on('session_start', async (data) => {
+    broadcast('session_start', data);
+    if (orchestrator.session) {
+      await saveSession(orchestrator.session);
+    }
+  });
   orchestrator.on('turn_start', (data) => broadcast('turn_start', data));
   orchestrator.on('agent_event', (data) => broadcast('agent_event', data));
   orchestrator.on('terminal_output', (data) => broadcast('terminal_output', data));
