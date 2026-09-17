@@ -117,7 +117,7 @@ export class TurnOrchestrator extends EventEmitter {
     this.emit('session_start', { session: this.session });
 
     // Protocol instructions so agents know how to hand off and conclude
-    const protocolText = `Pair-programming protocol:
+    const protocolText = `Collaboration protocol:
 - Coordinate tasks and architectural decisions in BLACKBOARD.md.
 - When the objective is completely achieved, include <TASK_COMPLETE> in your final message to conclude and stop the session.
 - If you hit ambiguity or require human guidance, include <NEED_HUMAN question="..."> to pause for human input.
@@ -126,9 +126,9 @@ export class TurnOrchestrator extends EventEmitter {
     // Kickoff prompt
     let kickoff;
     if (isIdeation) {
-      kickoff = `[Human Overseer]: You and your colleague ${colleague} are an equal pair-programming team. Invent a creative coding tool or challenge, outline your plan in BLACKBOARD.md, implement the initial scaffold, and pass to ${colleague}.\n\n${protocolText}`;
+      kickoff = `[Human Overseer]: You and your colleague ${colleague} are an equal collaborative team. Invent a creative discussion or challenge, outline your plan in BLACKBOARD.md, implement the initial scaffold, and pass to ${colleague}.\n\n${protocolText}`;
     } else {
-      kickoff = `[Human Overseer]: You and your colleague ${colleague} are an equal pair-programming team. Task: "${this.session.topic}". Review the workspace, coordinate in BLACKBOARD.md, implement the first step, and pass to ${colleague}.\n\n${protocolText}`;
+      kickoff = `[Human Overseer]: You and your colleague ${colleague} are an equal collaborative team. Task: "${this.session.topic}". Review the workspace, coordinate in BLACKBOARD.md, implement the first step, and pass to ${colleague}.\n\n${protocolText}`;
     }
 
     return this.executeTurnStep(kickoff);
