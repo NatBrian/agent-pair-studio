@@ -8,7 +8,11 @@ const execFileAsync = promisify(execFile);
 export async function initWorkspace(workspacePath) {
   const gitDir = resolve(workspacePath, '.git');
   if (!existsSync(gitDir)) {
-    await execFileAsync('git', ['init'], { cwd: workspacePath });
+    try {
+      await execFileAsync('git', ['init', '-b', 'master'], { cwd: workspacePath });
+    } catch {
+      await execFileAsync('git', ['init'], { cwd: workspacePath });
+    }
     await execFileAsync('git', ['config', 'user.name', 'Agent Pair Studio'], { cwd: workspacePath });
     await execFileAsync('git', ['config', 'user.email', 'pair@local.studio'], { cwd: workspacePath });
 
@@ -21,13 +25,73 @@ export async function initWorkspace(workspacePath) {
     }
     await execFileAsync('git', ['add', '-A'], { cwd: workspacePath });
     await execFileAsync('git', ['commit', '-m', 'chore: initialize agent workspace', '--allow-empty'], { cwd: workspacePath });
+    try {
+      await execFileAsync('git', ['tag', '-f', 'workspace-base'], { cwd: workspacePath });
+    } catch {}
   }
+}
+
+export async function getBaseReference(workspacePath) {
+  // 1. Pristine tag if initialized
+  try {
+    await execFileAsync('git', ['rev-parse', '--verify', 'workspace-base'], { cwd: workspacePath });
+    return 'workspace-base';
+  } catch {}
+
+  // 2. Default branch 'master'
+  try {
+    await execFileAsync('git', ['rev-parse', '--verify', 'master'], { cwd: workspacePath });
+    return 'master';
+  } catch {}
+
+  // 3. Default branch 'main'
+  try {
+    await execFileAsync('git', ['rev-parse', '--verify', 'main'], { cwd: workspacePath });
+    return 'main';
+  } catch {}
+
+  // 4. Fallback to initial root commit of the repository
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-list', '--max-parents=0', 'HEAD'], { cwd: workspacePath });
+    const root = stdout.trim().split(/\s+/)[0];
+    if (root) return root;
+  } catch {}
+
+  return null;
 }
 
 export async function createSessionBranch(workspacePath, sessionId, slug = 'collab') {
   const cleanSlug = slug.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 30);
   const branchName = `session/${sessionId}-${cleanSlug}`;
-  await execFileAsync('git', ['checkout', '-B', branchName], { cwd: workspacePath });
+
+  // 1. Reset and clean current workspace to avoid uncommitted file carryover
+  try {
+    await execFileAsync('git', ['reset', '--hard'], { cwd: workspacePath });
+    await execFileAsync('git', ['clean', '-fd'], { cwd: workspacePath });
+  } catch {}
+
+  // 2. Resolve clean base reference (workspace-base tag, master, main, or root commit)
+  const baseRef = await getBaseReference(workspacePath);
+
+  // 3. Branch from clean base
+  if (baseRef) {
+    await execFileAsync('git', ['checkout', '-B', branchName, baseRef], { cwd: workspacePath });
+  } else {
+    await execFileAsync('git', ['checkout', '-B', branchName], { cwd: workspacePath });
+  }
+
+  // 4. Force clean any untracked debris so workspace starts completely empty
+  try {
+    await execFileAsync('git', ['clean', '-fd'], { cwd: workspacePath });
+  } catch {}
+
+  // 5. Ensure pristine BLACKBOARD.md template is in place
+  const blackboardPath = resolve(workspacePath, 'BLACKBOARD.md');
+  writeFileSync(
+    blackboardPath,
+    '# Shared Workspace Blackboard\n\n## High-Level Architecture & Decisions\n\n## Completed Tasks\n\n## Current Goal\n'
+  );
+
   return branchName;
 }
 
